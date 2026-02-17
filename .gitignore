@@ -1,0 +1,27 @@
+# Dependencies
+node_modules
+
+# Build
+dist
+*.local
+
+# Secrets (API keys, env vars, credentials — never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*secret*
+*credentials*
+*credential*
+
+# Server DB (synced holdings + daily snapshots)
+server/firefly.db
+firefly.db
+
+# Third-party / reference (not part of this app)
+ghostfolio/
+
+# IDE / OS
+.DS_Store
+*.log

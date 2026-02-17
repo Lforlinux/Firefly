@@ -1,0 +1,8 @@
+# Paste this on your NAS (or any host). No repo clone needed — image is pulled from Docker Hub.
+services:
+  app:
+    image: lforlinux/personal-finance:latest
+    container_name: personal-finance
+    ports:
+      - "9765:80"
+    restart: unless-stopped
