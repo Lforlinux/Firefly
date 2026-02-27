@@ -4,7 +4,7 @@
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { getSnapshots, getPriceCache, saveHoldingsSync } from './db.js'
+import { getSnapshots, getHoldingsSync, getPriceCache, saveHoldingsSync } from './db.js'
 import { recordDailySnapshot, scheduleDailyJob, schedulePriceRefresh } from './dailyJob.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -57,6 +57,16 @@ app.get('/api/snapshots', (_req, res) => {
   }
 })
 
+app.get('/api/holdings', (_req, res) => {
+  try {
+    const out = getHoldingsSync()
+    if (!out) return res.json({ holdings: [], updatedAt: null })
+    res.json({ holdings: out.data, updatedAt: out.updatedAt })
+  } catch (e) {
+    res.status(500).json({ error: e?.message || 'Failed to load holdings' })
+  }
+})
+
 app.post('/api/sync-holdings', (req, res) => {
   try {
     const { ukHoldings } = req.body || {}
@@ -100,7 +110,7 @@ schedulePriceRefresh()
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`)
   if (!isProduction) {
-    console.log('  API: GET /api/quote  GET /api/snapshots  GET /api/cached-prices')
+    console.log('  API: GET /api/quote  GET /api/snapshots  GET /api/holdings  GET /api/cached-prices')
     console.log('  API: POST /api/sync-holdings  POST /api/record-daily')
   }
 })
