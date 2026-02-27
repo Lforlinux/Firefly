@@ -367,15 +367,23 @@ export function Dashboard() {
   const displayTotalFormatted = displayTotalValue
   const todayChangeDisplay = todayChange
 
+  /** Overview chart data: same as displayPoints, with short label for axis (Ghostfolio-style) */
+  const overviewChartData = displayPoints.map((p) => ({
+    date: p.date,
+    label: new Date(p.date).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
+    value: p.valueGBP,
+  }))
+
   return (
     <div className="min-h-screen text-gray-900">
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
         <h1 className="text-lg font-semibold text-gray-900">{portfolioLabel}</h1>
       </header>
 
-      <Tabs defaultValue="today">
+      <Tabs defaultValue="overview">
         <div className="border-b border-gray-200 px-4">
           <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="today">Today</TabsTrigger>
             <TabsTrigger value="holdings">Holdings</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
@@ -383,6 +391,60 @@ export function Dashboard() {
         </div>
 
         <div className="p-4 w-full min-w-0">
+          <TabsContent value="overview">
+            <div className="mx-auto max-w-3xl">
+              <div className="relative w-full" style={{ aspectRatio: '16 / 9' }}>
+                {overviewChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={overviewChartData} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                      <defs>
+                        <linearGradient id="overviewGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#14B8A6" stopOpacity={0.4} />
+                          <stop offset="100%" stopColor="#14B8A6" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                      <YAxis
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={(v) => `£${(v / 1000).toFixed(0)}k`}
+                        domain={['auto', 'auto']}
+                      />
+                      <Tooltip
+                        formatter={(v: number) => [formatMoney(Number(v), 'GBP'), 'Portfolio']}
+                        labelFormatter={(label) => label}
+                        contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#14B8A6"
+                        strokeWidth={2}
+                        fill="url(#overviewGradient)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-500">
+                    Add holdings and open the dashboard (or import CSV) to build your chart.
+                  </div>
+                )}
+              </div>
+              <div className="mt-4">
+                <p className="text-3xl font-bold text-gray-900">
+                  {formatMoney(displayTotalFormatted, curr)}
+                </p>
+                <p className="text-xs text-gray-500 mb-1">Current value</p>
+                {selectedPortfolio === 'all' && hasYesterdayAndToday ? (
+                  <p className={`text-lg font-semibold ${todayChange >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                    {todayChange >= 0 ? '+' : ''}{formatMoney(todayChangeDisplay, curr)} ({formatPercent(todayChangePct)})
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-500">—</p>
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
           <TabsContent value="today">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
