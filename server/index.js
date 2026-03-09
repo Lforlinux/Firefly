@@ -5,7 +5,7 @@ import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { getSnapshots, getHoldingsSync, getPriceCache, saveHoldingsSync } from './db.js'
-import { recordDailySnapshot, scheduleDailyJob, schedulePriceRefresh } from './dailyJob.js'
+import { recordDailySnapshot, scheduleDailyJob, schedulePriceRefresh, resolveQuoteSymbol } from './dailyJob.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT) || 3001
@@ -25,7 +25,8 @@ app.get('/api/quote', async (req, res) => {
   if (!symbol) {
     return res.status(400).json({ price: 0, error: 'Missing symbol' })
   }
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`
+  const ticker = resolveQuoteSymbol(symbol)
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`
   try {
     const response = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Firefly/1.0)' },
@@ -38,9 +39,9 @@ app.get('/api/quote', async (req, res) => {
     const result = chart?.result?.[0]
     const raw = result?.meta?.regularMarketPrice
     if (typeof raw !== 'number' || Number.isNaN(raw) || raw <= 0) {
-      return res.json({ price: 0, error: `No quote for "${symbol}" from Yahoo.` })
+      return res.json({ price: 0, error: `No quote for "${ticker}" from Yahoo.` })
     }
-    const price = lsePriceToPounds(symbol, raw)
+    const price = lsePriceToPounds(ticker, raw)
     res.json({ price: Math.round(price * 100) / 100 })
   } catch (e) {
     const msg = e?.message || 'Network error'
@@ -61,7 +62,23 @@ app.get('/api/holdings', (_req, res) => {
   try {
     const out = getHoldingsSync()
     if (!out) return res.json({ holdings: [], updatedAt: null })
-    res.json({ holdings: out.data, updatedAt: out.updatedAt })
+    
+    // Get cached prices for live values
+    const cached = getPriceCache()
+    const prices = cached?.prices || {}
+    
+    // Map holdings to use live prices from cache
+    const holdingsWithLivePrices = (out.data || []).map(h => {
+      const ticker = resolveQuoteSymbol(h.symbol)
+      // Try both with and without .L suffix
+      const livePrice = prices[ticker] || prices[ticker + '.L']
+      if (livePrice && livePrice > 0) {
+        return { ...h, unitPrice: livePrice }
+      }
+      return h
+    })
+    
+    res.json({ holdings: holdingsWithLivePrices, updatedAt: out.updatedAt })
   } catch (e) {
     res.status(500).json({ error: e?.message || 'Failed to load holdings' })
   }

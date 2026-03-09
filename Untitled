@@ -1,1 +1,8 @@
-http://localhost:5173
+
+{price: 0, error: "Yahoo: 404"}
+error
+: 
+"Yahoo: 404"
+price
+: 
+0

@@ -7,7 +7,7 @@ import { getHoldingsSync, saveSnapshot, savePriceCache } from './db.js'
 
 const YAHOO_CHART_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart'
 
-function getTickerForExchange(symbol, exchange) {
+export function getTickerForExchange(symbol, exchange) {
   const s = String(symbol).trim().toUpperCase().replace(/^NASDAQ:|^LON:|^NSE:|^BSE:/i, '')
   switch (exchange) {
     case 'NASDAQ':
@@ -23,21 +23,49 @@ function getTickerForExchange(symbol, exchange) {
   }
 }
 
-const SECURITY_NAME_TO_TICKER = {
-  'INVESCO NASDAQ 100': 'EQQQ',
-  'VANGUARD S&P 500': 'VUAG',
-  'ISHARES MSCI JAPAN': 'IJPN',
-  'VANGUARD FTSE DEVELOPED EUROPE': 'VEUR',
-  'VANGUARD FTSE DEVELOPED ASIA PACIFIC EX-JAPAN': 'VAPX',
-  'ISHARES MSCI EMERGING MARKETS IMI': 'EIMI',
-  'ISHARES PHYSICAL GOLD': 'SGLN',
+function normalizeKey(s) {
+  return String(s).trim().toUpperCase().replace(/\s+/g, ' ')
 }
 
-function resolveSymbol(symbol, exchange) {
-  const key = String(symbol).trim().toUpperCase().replace(/\s+/g, ' ')
+const NAME_TO_TICKER_RAW = [
+  ['Invesco Nasdaq 100', 'EQQQ'],
+  ['Vanguard S&P 500', 'VUAG'],
+  ['iShares MSCI Japan', 'CSJP'],
+  ['Vanguard FTSE Developed Europe', 'VEUR'],
+  ['Vanguard FTSE Developed Asia Pacific Ex-Japan', 'VAPX'],
+  ['iShares MSCI Emerging Markets IMI', 'EIMI'],
+  ['iShares Physical Gold', 'SGLN'],
+  ['Vanguard FTSE All-World', 'VWRL'],
+  ['Vanguard FTSE All-World UCITS', 'VWRL'],
+  ['Vanguard FTSE All-World UCITS ETF', 'VWRL'],
+]
+
+function buildNameToTickerMap() {
+  const map = {}
+  for (const [name, ticker] of NAME_TO_TICKER_RAW) {
+    map[normalizeKey(name)] = ticker
+  }
+  return map
+}
+
+export const SECURITY_NAME_TO_TICKER = buildNameToTickerMap()
+
+export function resolveSymbol(symbol, exchange) {
+  const key = normalizeKey(symbol)
   const ticker = SECURITY_NAME_TO_TICKER[key]
   if (ticker && (exchange === 'LSE' || exchange === 'NASDAQ')) return ticker
   return symbol
+}
+
+/** Resolve a raw symbol (e.g. "iShares MSCI Emerging Markets IMI.L") to Yahoo ticker (e.g. "EIMI.L"). */
+export function resolveQuoteSymbol(symbol) {
+  const raw = String(symbol).trim()
+  const isLse = raw.endsWith('.L') || raw.endsWith('.LON')
+  const exchange = isLse ? 'LSE' : 'NASDAQ'
+  const base = raw.replace(/\.(L|LON)$/i, '').trim()
+  const resolved = resolveSymbol(base, exchange)
+  const ticker = getTickerForExchange(resolved, exchange)
+  return ticker
 }
 
 function lsePriceToPounds(ticker, price) {

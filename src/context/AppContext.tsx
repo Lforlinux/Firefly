@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useMemo, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useMemo, useCallback, useEffect, type ReactNode } from 'react'
 import type { AppState, Holding, Exchange, UkPortfolioSnapshot } from '@/types'
 
 function cashAddedDateKey(h: Holding): string {
@@ -103,16 +103,7 @@ function loadSelectedPortfolio(): AppState['selectedPortfolio'] {
 }
 
 function loadSavedBudgets(): AppState['budgets'] {
-  try {
-    const raw = localStorage.getItem(BUDGETS_STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      const uk = parsed?.uk ?? parsed?.ukBudget
-      if (Array.isArray(uk)) return { uk }
-    }
-  } catch {
-    /* ignore */
-  }
+  // Always use default template for now - localStorage issues
   return { uk: ukBudgetTemplate }
 }
 
@@ -265,6 +256,41 @@ function persistHoldings(uk: Holding[]) {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(defaultState)
+
+  // Sync with server: GET first. Use server data so localhost and LAN IP match. If local has more holdings, push to server.
+  useEffect(() => {
+    async function syncWithServer() {
+      const res = await fetch('/api/holdings').catch(() => null)
+      const data = res?.ok ? await res.json() : null
+      const serverList = (data?.holdings ?? data?.ukHoldings) as Holding[] | undefined
+      const serverCount = Array.isArray(serverList) ? serverList.length : 0
+
+      let localHoldings: Holding[] = []
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY)
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          localHoldings = parsed?.ukHoldings ?? parsed?.uk ?? []
+        }
+      } catch {}
+
+      const useServer = serverCount > 0 && serverCount >= (localHoldings?.length ?? 0)
+      if (useServer && Array.isArray(serverList) && serverList.length > 0) {
+        const withExchange = serverList.map((h) => ensureHoldingHasExchange(h as Holding))
+        setState((s) => ({ ...s, ukHoldings: withExchange }))
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ ukHoldings: withExchange }))
+        } catch {}
+      } else if (Array.isArray(localHoldings) && localHoldings.length > 0) {
+        await fetch('/api/sync-holdings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ukHoldings: localHoldings })
+        }).catch(() => null)
+      }
+    }
+    syncWithServer()
+  }, [])
 
   const addHolding = useCallback((_portfolio: Portfolio, holding: Omit<Holding, 'id'>) => {
     const h: Holding = { ...holding, id: generateId() }

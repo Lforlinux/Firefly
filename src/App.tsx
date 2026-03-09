@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AppProvider } from '@/context/AppContext'
 import { AppLayout } from '@/components/AppLayout'
-import { Dashboard } from '@/pages/Dashboard'
+import { Dashboard } from '@/pages/DashboardNew'
 import { Investments } from '@/pages/Investments'
 import { Expenses } from '@/pages/Expenses'
 import { History } from '@/pages/History'

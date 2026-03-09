@@ -1,6 +1,12 @@
-import { useState, useRef } from 'react'
-import { useApp } from '@/context/AppContext'
-import { FileText, Settings, Download, Upload } from 'lucide-react'
+import { useState } from 'react'
+import { motion } from 'framer-motion'
+import { Settings, Download, Upload, Database, CreditCard, FileText, Shield, Info } from 'lucide-react'
+
+const fadeInUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.5 }
+}
 
 const BACKUP_KEYS = [
   'personal-fin-app-state',
@@ -8,10 +14,6 @@ const BACKUP_KEYS = [
   'personal-fin-app-emergency-fund',
   'personal-fin-app-uk-portfolio-history',
   'personal-fin-app-total-portfolio-history',
-  'personal-fin-app-alpha-vantage-key',
-  'personal-fin-app-twelvedata-key',
-  'personal-fin-app-cash-added-dates',
-  'personal-fin-app-selected-portfolio',
 ] as const
 
 function downloadBackup() {
@@ -23,159 +25,193 @@ function downloadBackup() {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `personal-finance-backup-${new Date().toISOString().slice(0, 10)}.json`
+  a.download = `firefly-backup-${new Date().toISOString().slice(0, 10)}.json`
   a.click()
   URL.revokeObjectURL(url)
 }
 
-function restoreBackup(file: File): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result as string) as Record<string, string | null>
+function importBackup() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0]
+    if (!file) return
+    
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+
+      let restored = 0
+
+      // Full Firefly backup (Export format)
+      if (data._version) {
         BACKUP_KEYS.forEach((key) => {
-          if (data[key] != null) localStorage.setItem(key, data[key]!)
+          if (data[key]) {
+            localStorage.setItem(key, data[key])
+            restored++
+          }
         })
-        resolve()
-      } catch (e) {
-        reject(e)
+      } else {
+        // Plain holdings backup: array or { ukHoldings: [...] }
+        const holdings =
+          Array.isArray(data)
+            ? data
+            : Array.isArray(data?.ukHoldings)
+              ? data.ukHoldings
+              : Array.isArray(data?.uk)
+                ? data.uk
+                : null
+        if (holdings?.length) {
+          const stateKey = BACKUP_KEYS[0] // 'personal-fin-app-state'
+          localStorage.setItem(stateKey, JSON.stringify({ ukHoldings: holdings }))
+          restored = 1
+        } else {
+          alert('Invalid backup file: expected Firefly export or holdings array / { ukHoldings: [...] }')
+          return
+        }
       }
+
+      // Push restored holdings to server so localhost and LAN IP both see the same data
+      try {
+        const stateRaw = localStorage.getItem(BACKUP_KEYS[0])
+        if (stateRaw) {
+          const parsed = JSON.parse(stateRaw)
+          const toSync = parsed?.ukHoldings ?? parsed?.uk
+          if (Array.isArray(toSync) && toSync.length > 0) {
+            await fetch('/api/sync-holdings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ukHoldings: toSync })
+            })
+          }
+        }
+      } catch {}
+
+      alert(`Successfully restored ${restored} item(s)! Reloading…`)
+      window.location.reload()
+    } catch (err) {
+      alert('Failed to import backup: ' + err)
     }
-    reader.onerror = () => reject(reader.error)
-    reader.readAsText(file)
-  })
+  }
+  input.click()
 }
 
 export function More() {
-  const { getPriceApiKey, setPriceApiKey, getTwelveDataKey, setTwelveDataKey } = useApp()
-  const [apiKey, setApiKey] = useState(() => getPriceApiKey() ?? '')
-  const [twelveDataKey, setTwelveDataKeyInput] = useState(() => getTwelveDataKey() ?? '')
-  const [keySaved, setKeySaved] = useState(false)
-  const [tdKeySaved, setTdKeySaved] = useState(false)
-  const [restoreError, setRestoreError] = useState<string | null>(null)
-  const [restoreSuccess, setRestoreSuccess] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    setRestoreError(null)
-    setRestoreSuccess(false)
-    if (!file) return
-    try {
-      await restoreBackup(file)
-      setRestoreSuccess(true)
-      setTimeout(() => window.location.reload(), 800)
-    } catch (err) {
-      setRestoreError(err instanceof Error ? err.message : 'Invalid backup file')
-    }
-  }
-
   return (
-    <div className="p-4 w-full min-w-0">
-      <header className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">More</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">Settings & backup</p>
+    <div className="min-h-screen bg-slate-950 text-white">
+      <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/80 backdrop-blur-xl">
+        <div className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center">
+              <Settings className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold">More</h1>
+              <p className="text-xs text-slate-500">Settings & utilities</p>
+            </div>
+          </div>
+        </div>
       </header>
 
-      <section className="space-y-3">
-        <SectionTitle icon={<FileText className="h-5 w-5" />}>Backup & restore</SectionTitle>
-        <div className="p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 space-y-3">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            If the app or browser data is lost, you can restore from a backup. Download a backup regularly and keep it somewhere safe (e.g. cloud drive).
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
+      <main className="p-6 max-w-2xl mx-auto" {...fadeInUp}>
+        {/* Data Management */}
+        <motion.div variants={fadeInUp} className="mb-6">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Database className="w-5 h-5 text-blue-400" />
+            Data Management
+          </h2>
+          <div className="space-y-3">
+            <button 
               onClick={downloadBackup}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium"
+              className="w-full flex items-center justify-between p-4 bg-slate-900 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors"
             >
-              <Download className="h-4 w-4" />
-              Download backup
+              <div className="flex items-center gap-3">
+                <Download className="w-5 h-5 text-slate-400" />
+                <div className="text-left">
+                  <p className="font-medium">Export Backup</p>
+                  <p className="text-xs text-slate-400">Download all data as JSON</p>
+                </div>
+              </div>
             </button>
-            <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
-              <Upload className="h-4 w-4" />
-              Restore from file
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json,application/json"
-                className="sr-only"
-                onChange={handleRestore}
-              />
-            </label>
+            <button 
+              onClick={importBackup}
+              className="w-full flex items-center justify-between p-4 bg-slate-900 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Upload className="w-5 h-5 text-slate-400" />
+                <div className="text-left">
+                  <p className="font-medium">Import Backup</p>
+                  <p className="text-xs text-slate-400">Restore from backup file</p>
+                </div>
+              </div>
+            </button>
           </div>
-          {restoreSuccess && <p className="text-sm text-success">Restored. Reloading…</p>}
-          {restoreError && <p className="text-sm text-red-600 dark:text-red-400">{restoreError}</p>}
-        </div>
-      </section>
+        </motion.div>
 
-      <section className="space-y-3 mt-8">
-        <SectionTitle icon={<Settings className="h-5 w-5" />}>Settings</SectionTitle>
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <div className="p-4 space-y-4">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Settings className="h-5 w-5 text-gray-500" />
-                <span className="font-medium text-gray-700 dark:text-gray-300">Price API — Twelve Data</span>
+        {/* Account Settings */}
+        <motion.div variants={fadeInUp} className="mb-6">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-purple-400" />
+            API Keys
+          </h2>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-4 bg-slate-900 rounded-xl border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 text-slate-400 text-xs">📈</div>
+                <div>
+                  <p className="font-medium">Alpha Vantage</p>
+                  <p className="text-xs text-slate-400">Stock price data</p>
+                </div>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                800 requests/day free. Get a key at twelvedata.com — used first for live prices.
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={twelveDataKey}
-                  onChange={(e) => { setTwelveDataKeyInput(e.target.value); setTdKeySaved(false) }}
-                  placeholder="Twelve Data API key"
-                  className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white"
-                />
-                <button
-                  type="button"
-                  onClick={() => { setTwelveDataKey(twelveDataKey); setTdKeySaved(true) }}
-                  className="px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium"
-                >
-                  Save
-                </button>
-              </div>
-              {tdKeySaved && <p className="text-xs text-success mt-1">Saved.</p>}
+              <span className="text-xs text-slate-500">Not configured</span>
             </div>
-            <div>
-              <span className="font-medium text-gray-700 dark:text-gray-300">Alpha Vantage (fallback)</span>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                25 requests/day. Used when Twelve Data has no quote (e.g. EQQQ.L on LSE). alphavantage.co
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => { setApiKey(e.target.value); setKeySaved(false) }}
-                  placeholder="Alpha Vantage API key"
-                  className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white"
-                />
-                <button
-                  type="button"
-                  onClick={() => { setPriceApiKey(apiKey); setKeySaved(true) }}
-                  className="px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium"
-                >
-                  Save
-                </button>
+            <div className="flex items-center justify-between p-4 bg-slate-900 rounded-xl border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 text-slate-400 text-xs">📊</div>
+                <div>
+                  <p className="font-medium">Twelve Data</p>
+                  <p className="text-xs text-slate-400">Real-time quotes</p>
+                </div>
               </div>
-              {keySaved && <p className="text-xs text-success mt-1">Saved.</p>}
+              <span className="text-xs text-slate-500">Not configured</span>
             </div>
           </div>
-        </div>
-      </section>
-    </div>
-  )
-}
+        </motion.div>
 
-function SectionTitle({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium">
-      {icon}
-      {children}
+        {/* About */}
+        <motion.div variants={fadeInUp}>
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Info className="w-5 h-5 text-emerald-400" />
+            About
+          </h2>
+          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                <span className="text-xl">🔥</span>
+              </div>
+              <div>
+                <p className="font-bold">Firefly</p>
+                <p className="text-xs text-slate-400">FIRE Portfolio Tracker</p>
+              </div>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Version</span>
+                <span>0.0.9</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Built with</span>
+                <span>React + Vite + Tailwind</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Data storage</span>
+                <span>Local (Browser)</span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </main>
     </div>
   )
 }
