@@ -4,7 +4,7 @@
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { getSnapshots, getHoldingsSync, getPriceCache, saveHoldingsSync } from './db.js'
+import { getSnapshots, getHoldingsSync, getPriceCache, saveHoldingsSync, getHoldingSnapshots, getHoldingSnapshotDates } from './db.js'
 import { recordDailySnapshot, scheduleDailyJob, schedulePriceRefresh, resolveQuoteSymbol } from './dailyJob.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -112,6 +112,25 @@ app.get('/api/cached-prices', (_req, res) => {
     res.json({ prices, updated })
   } catch (e) {
     res.status(500).json({ error: e?.message || 'Failed to load price cache' })
+  }
+})
+
+app.get('/api/holding-snapshots', (req, res) => {
+  try {
+    const { ticker, owner, startDate, endDate } = req.query
+    const snapshots = getHoldingSnapshots(ticker || null, owner || null, startDate || null, endDate || null)
+    res.json({ snapshots })
+  } catch (e) {
+    res.status(500).json({ error: e?.message || 'Failed to load holding snapshots' })
+  }
+})
+
+app.get('/api/holding-snapshot-dates', (_req, res) => {
+  try {
+    const dates = getHoldingSnapshotDates()
+    res.json({ dates: dates.map(d => d.date) })
+  } catch (e) {
+    res.status(500).json({ error: e?.message || 'Failed to load snapshot dates' })
   }
 })
 

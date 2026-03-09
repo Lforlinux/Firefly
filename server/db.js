@@ -26,6 +26,18 @@ db.exec(`
     price REAL NOT NULL,
     updated_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS holding_snapshots (
+    date TEXT NOT NULL,
+    ticker TEXT NOT NULL,
+    name TEXT,
+    owner TEXT,
+    units REAL NOT NULL,
+    price REAL NOT NULL,
+    value_gbp REAL NOT NULL,
+    PRIMARY KEY (date, ticker, owner)
+  );
+  CREATE INDEX IF NOT EXISTS idx_holding_snapshots_date ON holding_snapshots(date);
+  CREATE INDEX IF NOT EXISTS idx_holding_snapshots_ticker ON holding_snapshots(ticker);
 `)
 
 export function getSnapshots() {
@@ -64,6 +76,42 @@ export function getPriceCache() {
 export function savePriceCache(ticker, price) {
   const updatedAt = new Date().toISOString()
   db.prepare('INSERT OR REPLACE INTO price_cache (ticker, price, updated_at) VALUES (?, ?, ?)').run(ticker, price, updatedAt)
+}
+
+export function saveHoldingSnapshot(date, ticker, name, owner, units, price, valueGBP) {
+  db.prepare(`
+    INSERT OR REPLACE INTO holding_snapshots (date, ticker, name, owner, units, price, value_gbp)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(date, ticker, name, owner, units, price, valueGBP)
+}
+
+export function getHoldingSnapshots(ticker = null, owner = null, startDate = null, endDate = null) {
+  let query = 'SELECT date, ticker, name, owner, units, price, value_gbp FROM holding_snapshots WHERE 1=1'
+  const params = []
+  
+  if (ticker) {
+    query += ' AND ticker = ?'
+    params.push(ticker)
+  }
+  if (owner) {
+    query += ' AND owner = ?'
+    params.push(owner)
+  }
+  if (startDate) {
+    query += ' AND date >= ?'
+    params.push(startDate)
+  }
+  if (endDate) {
+    query += ' AND date <= ?'
+    params.push(endDate)
+  }
+  
+  query += ' ORDER BY date DESC, ticker'
+  return db.prepare(query).all(...params)
+}
+
+export function getHoldingSnapshotDates() {
+  return db.prepare('SELECT DISTINCT date FROM holding_snapshots ORDER BY date DESC').all()
 }
 
 export function close() {

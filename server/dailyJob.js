@@ -3,7 +3,7 @@
  * (fetch prices from Yahoo) and save snapshot. Today's gain = market movement vs yesterday.
  * Price refresh: every 30 mins, fetch prices for all synced holdings and store in price_cache.
  */
-import { getHoldingsSync, saveSnapshot, savePriceCache } from './db.js'
+import { getHoldingsSync, saveSnapshot, savePriceCache, saveHoldingSnapshot } from './db.js'
 
 const YAHOO_CHART_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart'
 
@@ -102,24 +102,45 @@ export async function recordDailySnapshot() {
   }
   const ukHoldings = sync.data
   let totalGBP = 0
+  const date = todayStr()
+  
   for (const h of ukHoldings) {
     const isCash = h.category === 'Cash' || h.symbol === 'CASH'
+    let price = null
+    let valueGBP = 0
+    
     if (isCash) {
-      totalGBP += (h.averageCost ?? 0) * (h.units ?? 0)
-      continue
+      valueGBP = (h.averageCost ?? 0) * (h.units ?? 0)
+      price = h.averageCost ?? 0
+    } else if (h.currency === 'GBP') {
+      const symbol = resolveSymbol(h.symbol, h.exchange || 'LSE')
+      const ticker = getTickerForExchange(symbol, h.exchange || 'LSE')
+      price = await fetchPrice(ticker)
+      if (price != null && price > 0) {
+        valueGBP = (h.units ?? 0) * price
+      } else {
+        valueGBP = (h.units ?? 0) * (h.unitPrice ?? 0)
+        price = h.unitPrice ?? 0
+      }
+      await new Promise((r) => setTimeout(r, 350))
     }
-    if (h.currency !== 'GBP') continue // only GBP for UK portfolio snapshot
-    const symbol = resolveSymbol(h.symbol, h.exchange || 'LSE')
-    const ticker = getTickerForExchange(symbol, h.exchange || 'LSE')
-    const price = await fetchPrice(ticker)
-    if (price != null && price > 0) {
-      totalGBP += (h.units ?? 0) * price
-    } else {
-      totalGBP += (h.units ?? 0) * (h.unitPrice ?? 0)
+    
+    totalGBP += valueGBP
+    
+    // Save individual holding snapshot
+    if (price != null && h.currency === 'GBP') {
+      saveHoldingSnapshot(
+        date,
+        h.symbol,
+        h.name,
+        h.owner,
+        h.units ?? 0,
+        price,
+        Math.round(valueGBP * 100) / 100
+      )
     }
-    await new Promise((r) => setTimeout(r, 350))
   }
-  const date = todayStr()
+  
   saveSnapshot(date, Math.round(totalGBP * 100) / 100)
   console.log(`[daily] Snapshot saved: ${date} = £${totalGBP.toFixed(2)}`)
 }
