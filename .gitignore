@@ -26,3 +26,11 @@ ghostfolio/
 .DS_Store
 *.log
 .vercel
+
+# Local analysis/test artifacts
+.claude/
+claude_usage_30d.html
+google-sheet-csv/
+data.cache.json
+data.json.bak.*
+vite.config.ts.timestamp-*.mjs
