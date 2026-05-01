@@ -5,15 +5,17 @@ import { useAuth } from '@/context/AuthContext'
 import { AppLayout } from '@/components/AppLayout'
 import { Overview } from '@/pages/Overview'
 import { Holdings } from '@/pages/Holdings'
-import { Performance } from '@/pages/Performance'
-import { Sectors } from '@/pages/Sectors'
-import { Dividends } from '@/pages/Dividends'
-import { Transactions } from '@/pages/Transactions'
+import { Liabilities } from '@/pages/Liabilities'
+import { Snapshots } from '@/pages/Snapshots'
+import { Allocation } from '@/pages/Allocation'
+import { Goals } from '@/pages/Goals'
+import { Essentials } from '@/pages/Essentials'
 import { Import } from '@/pages/Import'
 import { Settings } from '@/pages/Settings'
+import { NetWorthProgress } from '@/pages/NetWorthProgress'
+import { Analytics } from '@/pages/Analytics'
 import { SignupForm } from '@/components/SignupForm'
 import { LoginForm } from '@/components/LoginForm'
-import { LogoutButton } from '@/components/LogoutButton'
 
 function AuthLayout() {
   const { isLoading, isAuthenticated } = useAuth()
@@ -64,33 +66,32 @@ function AuthLayout() {
 }
 
 function ProtectedRoutes() {
-  const { isAuthenticated, email } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   if (!isAuthenticated) return <Navigate to="/auth" replace />
 
   return (
-    <>
-      <div className="flex justify-between items-center p-4 border-b dark:border-gray-700">
-        <h1 className="text-2xl font-bold">Firefly</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-600 dark:text-gray-400">{email}</span>
-          <LogoutButton />
-        </div>
-      </div>
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<Overview />} />
-          <Route path="/holdings" element={<Holdings />} />
-          <Route path="/performance" element={<Performance />} />
-          <Route path="/sectors" element={<Sectors />} />
-          <Route path="/dividends" element={<Dividends />} />
-          <Route path="/transactions" element={<Transactions />} />
-          <Route path="/import" element={<Import />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </>
+    <Routes>
+      <Route element={<AppLayout />}>
+        <Route path="/" element={<Overview />} />
+        <Route path="/assets" element={<Holdings />} />
+        <Route path="/liabilities" element={<Liabilities />} />
+        <Route path="/snapshots" element={<Snapshots />} />
+        <Route path="/allocation" element={<Allocation />} />
+        <Route path="/goals" element={<Goals />} />
+        <Route path="/essentials" element={<Essentials />} />
+        <Route path="/analytics" element={<Analytics />} />
+        <Route path="/networth-progress" element={<NetWorthProgress />} />
+        <Route path="/import" element={<Import />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/holdings" element={<Navigate to="/assets" replace />} />
+        <Route path="/performance" element={<Navigate to="/snapshots" replace />} />
+        <Route path="/sectors" element={<Navigate to="/allocation" replace />} />
+        <Route path="/dividends" element={<Navigate to="/" replace />} />
+        <Route path="/transactions" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
   )
 }
 

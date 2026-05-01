@@ -13,11 +13,28 @@ type ImportedTransaction = {
   total: number
   totalCurrency: string
   notes?: string
+  holdingType?: 'stock' | 'etf' | 'cash'
+  sourceId?: string
 }
 
 function inferHoldingType(tx: ImportedTransaction): 'stock' | 'etf' | 'cash' {
+  if (tx.holdingType === 'stock' || tx.holdingType === 'etf' || tx.holdingType === 'cash') return tx.holdingType
   if (tx.type === 'deposit' || tx.type === 'withdrawal') return 'cash'
   return 'etf'
+}
+
+function buildStableSourceId(source: string, tx: ImportedTransaction, ticker: string, qty: number, price: number, currency: string): string {
+  if (tx.sourceId && tx.sourceId.trim()) return tx.sourceId.trim()
+  // Deterministic fallback key (source-agnostic) for cross-source dedupe.
+  return [
+    tx.type,
+    tx.date,
+    ticker,
+    qty.toFixed(8),
+    price.toFixed(8),
+    currency,
+    (tx.notes || '').trim().toLowerCase(),
+  ].join('|')
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -35,6 +52,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const db = await getDbClient()
     const errors: string[] = []
     let imported = 0
+    let skipped = 0
+
+    // Backward-compatible safety: ensure dedupe column/index exist.
+    await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source_id TEXT`)
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_user_source_id_unique ON transactions(user_id, source_id) WHERE source_id IS NOT NULL`)
 
     for (let i = 0; i < transactions.length; i++) {
       const tx = transactions[i] as ImportedTransaction
@@ -61,6 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           errors.push(`Row ${i}: Invalid price/total`)
           continue
         }
+        const sourceId = buildStableSourceId(source, tx, ticker, qtyForTx, priceForTx, currency)
 
         // Find or create holding for this user+ticker.
         const existing = await db.query(
@@ -68,6 +91,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           [auth.userId, ticker]
         )
         let holdingId = existing.rows?.[0]?.id
+
+        // Idempotency guard #1: exact source key.
+        const existingBySource = await db.query(
+          `SELECT id FROM transactions WHERE user_id = $1 AND source_id = $2 LIMIT 1`,
+          [auth.userId, sourceId]
+        )
+        if (existingBySource.rows?.[0]?.id) {
+          skipped++
+          continue
+        }
+
+        // Idempotency guard #2: semantic duplicate across different sources.
+        if (holdingId) {
+          const existingByFingerprint = await db.query(
+            `SELECT id
+             FROM transactions
+             WHERE user_id = $1
+               AND holding_id = $2
+               AND transaction_type = $3
+               AND transaction_date = $4::date
+               AND currency = $5
+               AND ABS(shares - $6) < 1e-8
+               AND ABS(price - $7) < 1e-8
+             LIMIT 1`,
+            [auth.userId, holdingId, txType, tx.date, currency, qtyForTx, priceForTx]
+          )
+          if (existingByFingerprint.rows?.[0]?.id) {
+            skipped++
+            continue
+          }
+        }
 
         if (!holdingId) {
           const inserted = await db.query(
@@ -108,9 +162,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         await db.query(
-          `INSERT INTO transactions (user_id, holding_id, transaction_type, shares, price, currency, transaction_date, notes)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-          [auth.userId, holdingId, txType, qtyForTx, priceForTx, currency, tx.date, tx.notes || `Imported from ${source}`]
+          `INSERT INTO transactions (user_id, holding_id, transaction_type, shares, price, currency, transaction_date, notes, source_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [auth.userId, holdingId, txType, qtyForTx, priceForTx, currency, tx.date, tx.notes || `Imported from ${source}`, sourceId]
         )
 
         imported++
@@ -121,7 +175,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({
       imported,
-      failed: transactions.length - imported,
+      skipped,
+      failed: transactions.length - imported - skipped,
       errors,
     })
   } catch (e) {

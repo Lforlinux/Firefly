@@ -91,6 +91,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const c = String(p.currency || '').toUpperCase()
       if (c && c !== base) neededCurrencies.add(c)
     }
+    // Keep GBP<->INR available for dashboard conversion card regardless of holdings mix.
+    if (base === 'GBP') neededCurrencies.add('INR')
 
     const fxRatesMap: Record<string, { rate: number; asOf: string }> = {}
     for (const ccy of neededCurrencies) {
@@ -108,6 +110,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         errors.push({ pair: `${ccy}_${base}`, error: e instanceof Error ? e.message : 'FX failed' })
       }
       await new Promise((r) => setTimeout(r, 100))
+    }
+    // Ensure direct GBP_INR also exists for display consumers.
+    try {
+      const gbpInr = await yahooFx('GBP', 'INR')
+      fxRatesMap[gbpInr.pair] = { rate: gbpInr.rate, asOf: gbpInr.asOf }
+      await db.query(
+        `INSERT INTO fx_cache (pair, rate, as_of, updated_at)
+         VALUES ($1,$2,$3,NOW())
+         ON CONFLICT (pair) DO UPDATE
+         SET rate = EXCLUDED.rate, as_of = EXCLUDED.as_of, updated_at = NOW()`,
+        [gbpInr.pair, gbpInr.rate, gbpInr.asOf]
+      )
+    } catch (e) {
+      errors.push({ pair: 'GBP_INR', error: e instanceof Error ? e.message : 'FX failed' })
     }
     const selfPair = `${base}_${base}`
     fxRatesMap[selfPair] = { rate: 1, asOf: new Date().toISOString() }

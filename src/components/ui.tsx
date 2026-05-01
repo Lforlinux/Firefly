@@ -2,9 +2,16 @@
  * Small UI primitives shared across pages.
  */
 import type { ReactNode } from 'react'
+import type { HTMLAttributes } from 'react'
 import { TrendingDown, TrendingUp, Loader2 } from 'lucide-react'
 import { formatMoney, formatPercent } from '@/utils/format'
 import type { CurrencyCode } from '@/types'
+
+type SurfaceTone = 'base' | 'soft' | 'elevated'
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(' ')
+}
 
 export function PageHeader({
   title,
@@ -16,23 +23,40 @@ export function PageHeader({
   right?: ReactNode
 }) {
   return (
-    <header className="flex flex-col gap-2 border-b border-slate-200 bg-white px-6 py-5 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center sm:justify-between">
+    <header className="ff-page-header flex flex-col gap-3 border-b border-slate-200/80 bg-white/90 px-4 py-4 backdrop-blur dark:border-slate-800/80 dark:bg-slate-950/90 sm:px-6 sm:py-5 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>}
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50 sm:text-[1.65rem]">{title}</h1>
+        {subtitle && <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>}
       </div>
       {right && <div className="flex items-center gap-3">{right}</div>}
     </header>
   )
 }
 
-export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
+export function Card({
+  children,
+  className = '',
+  tone = 'base',
+  ...props
+}: {
+  children: ReactNode
+  className?: string
+  tone?: SurfaceTone
+} & HTMLAttributes<HTMLDivElement>) {
+  const toneClass =
+    tone === 'elevated'
+      ? 'bg-white shadow-md shadow-slate-200/70 dark:bg-slate-900 dark:shadow-none'
+      : tone === 'soft'
+        ? 'bg-slate-50/80 dark:bg-slate-900/70'
+        : 'bg-white dark:bg-slate-900'
   return (
     <div
-      className={[
-        'rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900',
+      {...props}
+      className={cx(
+        'ff-card rounded-2xl border border-slate-200/80 p-5 shadow-sm shadow-slate-200/60 transition-all duration-200 dark:border-slate-800/90 dark:shadow-none',
+        toneClass,
         className,
-      ].join(' ')}
+      )}
     >
       {children}
     </div>
@@ -45,23 +69,30 @@ export function KpiCard({
   sub,
   tone = 'neutral',
   icon,
+  className = '',
+  valueClassName = '',
 }: {
   label: string
   value: ReactNode
   sub?: ReactNode
   tone?: 'neutral' | 'gain' | 'loss'
   icon?: ReactNode
+  className?: string
+  valueClassName?: string
 }) {
   const valueClass =
     tone === 'gain' ? 'text-emerald-500' : tone === 'loss' ? 'text-rose-500' : 'text-slate-900 dark:text-slate-50'
   return (
-    <Card>
+    <Card
+      tone="elevated"
+      className={`ff-kpi-card relative overflow-hidden ${className}`}
+    >
       <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
         <span>{label}</span>
         {icon}
       </div>
-      <div className={`mt-2 text-2xl font-semibold tabular-nums ${valueClass}`}>{value}</div>
-      {sub && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{sub}</div>}
+      <div className={`mt-2.5 text-2xl font-semibold tabular-nums sm:text-[1.65rem] ${valueClass} ${valueClassName}`}>{value}</div>
+      {sub && <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">{sub}</div>}
     </Card>
   )
 }
@@ -101,7 +132,7 @@ export function EmptyState({
   action?: ReactNode
 }) {
   return (
-    <Card className="py-12 text-center">
+    <Card tone="soft" className="py-12 text-center">
       <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
       {body && <p className="mx-auto mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">{body}</p>}
       {action && <div className="mt-5 flex justify-center">{action}</div>}
@@ -112,12 +143,12 @@ export function EmptyState({
 export function Loading({ label = 'Loading…' }: { label?: string }) {
   return (
     <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
-      <Loader2 className="h-6 w-6 animate-spin" />
+      <Loader2 className="h-6 w-6 animate-spin text-slate-400 dark:text-slate-500" />
       <span className="text-sm">{label}</span>
     </div>
   )
 }
 
 export function PageBody({ children }: { children: ReactNode }) {
-  return <div className="space-y-6 px-6 py-6">{children}</div>
+  return <div className="ff-page-body space-y-4 px-4 py-4 sm:space-y-6 sm:px-6 sm:py-6 lg:space-y-7">{children}</div>
 }

@@ -116,7 +116,7 @@ function parseInvestEngineRow(line: string, headers: string[]): InvestEngineRow 
     row[h] = values[i]?.trim() || ''
   })
 
-  return row as InvestEngineRow
+  return row as unknown as InvestEngineRow
 }
 
 function mapInvestEngineToTransaction(

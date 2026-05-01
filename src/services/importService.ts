@@ -6,7 +6,6 @@ import { ImportedTransaction, ImportPreview, ImportError } from '@/types/import'
 import {
   parseInvestEngineCSV,
   parseTrading212CSV,
-  mapTrading212ToTransaction,
   validateTransaction,
 } from '@/utils/importMappers'
 import { jsonFetch } from './api'
@@ -113,9 +112,9 @@ export async function fetchTrading212Data(options?: {
  * POST /api/import/commit
  */
 export async function commitImport(
-  source: 'investengine' | 'trading212',
+  source: 'investengine' | 'trading212' | 'manual',
   transactions: ImportedTransaction[],
-): Promise<{ imported: number; failed: number; errors: string[] }> {
+): Promise<{ imported: number; skipped?: number; failed: number; errors: string[] }> {
   try {
     return await jsonFetch('/api/import/commit', {
       method: 'POST',

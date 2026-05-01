@@ -31,6 +31,10 @@ ghostfolio/
 .claude/
 claude_usage_30d.html
 google-sheet-csv/
+firefly2.0/
 data.cache.json
+data.json
 data.json.bak.*
+*.csv
+*backup*.json
 vite.config.ts.timestamp-*.mjs

@@ -5,7 +5,7 @@
 
 // Raw import record — varies by source format
 export interface RawImportRecord {
-  source: 'investengine' | 'trading212'
+  source: 'investengine' | 'trading212' | 'manual'
   data: Record<string, unknown>
 }
 
@@ -27,13 +27,14 @@ export interface ImportedTransaction {
   taxesCurrency?: string
   exchangeRate?: number // if transaction in foreign currency
   notes?: string
-  source: 'investengine' | 'trading212'
+  source: 'investengine' | 'trading212' | 'manual'
+  holdingType?: 'stock' | 'etf' | 'cash'
   sourceId?: string // unique identifier from source
 }
 
 // Import preview result
 export interface ImportPreview {
-  source: 'investengine' | 'trading212'
+  source: 'investengine' | 'trading212' | 'manual'
   totalRecords: number
   validRecords: number
   errorRecords: ImportError[]
@@ -85,7 +86,7 @@ export interface Trading212Row {
 
 // Import context — what user selected
 export interface ImportContext {
-  source: 'investengine' | 'trading212'
+  source: 'investengine' | 'trading212' | 'manual'
   file?: File // for CSV uploads
   dateRange?: {
     start?: string

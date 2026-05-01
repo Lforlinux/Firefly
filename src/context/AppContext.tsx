@@ -34,12 +34,19 @@ const queryClient = new QueryClient({
 
 const THEME_KEY = 'firefly.theme'
 const OWNER_KEY = 'firefly.owner'
+const PRIVACY_KEY = 'firefly.privacy'
+const VISUAL_STYLE_KEY = 'firefly.visualStyle'
 
 type Theme = 'light' | 'dark'
+type VisualStyle = 'minimal' | 'premium3d'
 
 interface UiState {
   theme: Theme
   toggleTheme: () => void
+  visualStyle: VisualStyle
+  toggleVisualStyle: () => void
+  privacyMode: boolean
+  togglePrivacyMode: () => void
   selectedOwner: OwnerFilter
   setSelectedOwner: (o: OwnerFilter) => void
 }
@@ -63,14 +70,40 @@ function loadOwner(): OwnerFilter {
   return 'all'
 }
 
+function loadPrivacyMode(): boolean {
+  try {
+    return localStorage.getItem(PRIVACY_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function loadVisualStyle(): VisualStyle {
+  try {
+    const v = localStorage.getItem(VISUAL_STYLE_KEY)
+    if (v === 'minimal' || v === 'premium3d') return v
+  } catch {
+    // ignore
+  }
+  return 'premium3d'
+}
+
 function applyTheme(theme: Theme) {
   const root = document.documentElement
   if (theme === 'dark') root.classList.add('dark')
   else root.classList.remove('dark')
 }
 
+function applyVisualStyle(style: VisualStyle) {
+  const root = document.documentElement
+  if (style === 'premium3d') root.classList.add('ff-3d')
+  else root.classList.remove('ff-3d')
+}
+
 function UiProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => loadTheme())
+  const [visualStyle, setVisualStyle] = useState<VisualStyle>(() => loadVisualStyle())
+  const [privacyMode, setPrivacyMode] = useState<boolean>(() => loadPrivacyMode())
   const [selectedOwner, setSelectedOwnerState] = useState<OwnerFilter>(() => loadOwner())
 
   useEffect(() => {
@@ -78,15 +111,28 @@ function UiProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem(THEME_KEY, theme) } catch { /* ignore */ }
   }, [theme])
 
+  useEffect(() => {
+    applyVisualStyle(visualStyle)
+    try { localStorage.setItem(VISUAL_STYLE_KEY, visualStyle) } catch { /* ignore */ }
+  }, [visualStyle])
+
   const toggleTheme = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), [])
+  const toggleVisualStyle = useCallback(() => setVisualStyle((v) => (v === 'minimal' ? 'premium3d' : 'minimal')), [])
+  const togglePrivacyMode = useCallback(() => {
+    setPrivacyMode((v) => {
+      const next = !v
+      try { localStorage.setItem(PRIVACY_KEY, next ? '1' : '0') } catch { /* ignore */ }
+      return next
+    })
+  }, [])
   const setSelectedOwner = useCallback((o: OwnerFilter) => {
     setSelectedOwnerState(o)
     try { localStorage.setItem(OWNER_KEY, o) } catch { /* ignore */ }
   }, [])
 
   const value = useMemo<UiState>(
-    () => ({ theme, toggleTheme, selectedOwner, setSelectedOwner }),
-    [theme, toggleTheme, selectedOwner, setSelectedOwner],
+    () => ({ theme, toggleTheme, visualStyle, toggleVisualStyle, privacyMode, togglePrivacyMode, selectedOwner, setSelectedOwner }),
+    [theme, toggleTheme, visualStyle, toggleVisualStyle, privacyMode, togglePrivacyMode, selectedOwner, setSelectedOwner],
   )
   return <UiContext.Provider value={value}>{children}</UiContext.Provider>
 }

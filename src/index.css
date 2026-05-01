@@ -21,6 +21,312 @@ body {
   min-height: 100vh;
 }
 
+.ff-3d .ff-page-header {
+  border-color: rgba(129, 140, 248, 0.32) !important;
+  background: linear-gradient(135deg, rgba(49, 46, 129, 0.42), rgba(30, 41, 59, 0.28)) !important;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 35px rgba(30, 27, 75, 0.35);
+}
+
+.ff-3d .ff-page-body {
+  gap: 1.5rem;
+}
+
+.ff-3d .ff-card {
+  border-color: rgba(129, 140, 248, 0.28) !important;
+  background: linear-gradient(145deg, rgba(49, 46, 129, 0.45), rgba(30, 41, 59, 0.28)) !important;
+  color: rgb(224, 231, 255);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 16px 40px rgba(15, 23, 42, 0.58);
+}
+
+.ff-3d .ff-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 22px 50px rgba(37, 99, 235, 0.34);
+}
+
+.ff-3d .ff-kpi-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(129, 140, 248, 0.34);
+  box-shadow: inset 0 0 28px rgba(99, 102, 241, 0.25);
+  pointer-events: none;
+}
+
+.ff-3d .ff-kpi-card::after {
+  content: '';
+  position: absolute;
+  right: -2.5rem;
+  top: -2.5rem;
+  width: 7rem;
+  height: 7rem;
+  border-radius: 9999px;
+  background: rgba(129, 140, 248, 0.22);
+  filter: blur(24px);
+  pointer-events: none;
+  animation: ff-kpi-pulse 4s ease-in-out infinite;
+}
+
+.ff-3d .ff-card h1,
+.ff-3d .ff-card h2,
+.ff-3d .ff-card h3,
+.ff-3d .ff-card h4,
+.ff-3d .ff-page-header h1 {
+  color: #c4b5fd;
+  text-shadow: 0 0 14px rgba(196, 181, 253, 0.5);
+}
+
+.ff-3d,
+.ff-3d body {
+  color: #e0f2fe;
+}
+
+.ff-3d .text-slate-900,
+.ff-3d .text-slate-100,
+.ff-3d .text-slate-50,
+.ff-3d .text-slate-800,
+.ff-3d .text-slate-700,
+.ff-3d .text-slate-600 {
+  color: #a5f3fc !important;
+}
+
+.ff-3d .font-semibold,
+.ff-3d .font-medium,
+.ff-3d .font-bold {
+  color: #67e8f9 !important;
+}
+
+.ff-3d .text-emerald-600,
+.ff-3d .text-emerald-500,
+.ff-3d .text-emerald-400 {
+  color: #4ade80 !important;
+}
+
+.ff-3d .text-rose-600,
+.ff-3d .text-rose-500,
+.ff-3d .text-rose-400 {
+  color: #fb7185 !important;
+}
+
+.ff-3d .text-amber-600,
+.ff-3d .text-amber-500,
+.ff-3d .text-amber-400 {
+  color: #fbbf24 !important;
+}
+
+.ff-3d .ff-card p,
+.ff-3d .ff-card .text-slate-500,
+.ff-3d .ff-card .text-slate-400,
+.ff-3d .ff-page-header .text-slate-500,
+.ff-3d .ff-page-header .text-slate-400 {
+  color: #93c5fd !important;
+}
+
+.ff-3d .text-xs,
+.ff-3d .text-sm {
+  color: #93c5fd;
+}
+
+.ff-3d input,
+.ff-3d select,
+.ff-3d textarea {
+  background: rgba(49, 46, 129, 0.45) !important;
+  border: 1px solid rgba(129, 140, 248, 0.32) !important;
+  color: #a5f3fc !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 14px rgba(59, 130, 246, 0.12);
+}
+
+.ff-3d input::placeholder,
+.ff-3d textarea::placeholder {
+  color: rgba(125, 211, 252, 0.65) !important;
+}
+
+.ff-3d button {
+  border-color: rgba(129, 140, 248, 0.32);
+}
+
+.ff-3d button:not(:disabled) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 8px 22px rgba(37, 99, 235, 0.24);
+}
+
+.ff-3d thead {
+  background: rgba(49, 46, 129, 0.42) !important;
+}
+
+.ff-3d tbody tr:hover {
+  background: rgba(99, 102, 241, 0.14) !important;
+}
+
+.ff-3d .ff-essentials-score-card,
+.ff-3d .ff-essentials-list-card {
+  border-color: rgba(129, 140, 248, 0.3) !important;
+  background: linear-gradient(150deg, rgba(49, 46, 129, 0.5), rgba(30, 41, 59, 0.3)) !important;
+}
+
+.ff-3d .ff-essentials-row {
+  border-color: rgba(129, 140, 248, 0.28) !important;
+  background: rgba(49, 46, 129, 0.36) !important;
+  color: #a5f3fc !important;
+}
+
+.ff-3d .ff-essentials-row:hover {
+  background: rgba(79, 70, 229, 0.34) !important;
+  border-color: rgba(129, 140, 248, 0.42) !important;
+}
+
+.ff-3d .ff-signal-item {
+  border-color: rgba(129, 140, 248, 0.32) !important;
+  background: linear-gradient(135deg, rgba(49, 46, 129, 0.5), rgba(30, 41, 59, 0.3)) !important;
+  color: #a5f3fc !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 8px 20px rgba(30, 41, 59, 0.32);
+}
+
+.ff-3d .ff-assets-type-card {
+  border-color: rgba(129, 140, 248, 0.34) !important;
+  background: linear-gradient(145deg, rgba(49, 46, 129, 0.5), rgba(30, 41, 59, 0.32)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 12px 28px rgba(15, 23, 42, 0.38);
+}
+
+.ff-3d .ff-type-pill {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.24), rgba(129, 140, 248, 0.24)) !important;
+  border: 1px solid rgba(103, 232, 249, 0.42) !important;
+  color: #a5f3fc !important;
+  letter-spacing: 0.04em;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 0 14px rgba(56, 189, 248, 0.22);
+}
+
+.ff-3d .ff-kpi-card .ff-networth-value {
+  color: #e879f9 !important;
+  text-shadow: 0 0 14px rgba(232, 121, 249, 0.42);
+}
+
+.ff-3d .ff-refresh-btn {
+  color: #eef2ff !important;
+  letter-spacing: 0.01em;
+  text-shadow: none !important;
+  border-color: rgba(103, 232, 249, 0.35) !important;
+  background: linear-gradient(135deg, rgba(49, 46, 129, 0.88), rgba(55, 48, 163, 0.76)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 10px 26px rgba(37, 99, 235, 0.35) !important;
+}
+
+.ff-3d .ff-refresh-btn svg {
+  color: #67e8f9;
+}
+
+.ff-3d .ff-refresh-shell {
+  border-color: rgba(129, 140, 248, 0.38) !important;
+  background: linear-gradient(145deg, rgba(49, 46, 129, 0.7), rgba(30, 41, 59, 0.45)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 12px 30px rgba(15, 23, 42, 0.46);
+}
+
+.ff-3d .ff-refresh-meta {
+  color: #a5f3fc !important;
+  font-weight: 600;
+  text-shadow: 0 0 10px rgba(103, 232, 249, 0.28);
+}
+
+.ff-3d .ff-upload-picker {
+  border-color: rgba(129, 140, 248, 0.4) !important;
+  background: linear-gradient(145deg, rgba(49, 46, 129, 0.66), rgba(30, 41, 59, 0.42)) !important;
+  color: #a5f3fc !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 8px 20px rgba(37, 99, 235, 0.26);
+}
+
+.ff-3d .ff-upload-picker:hover {
+  background: linear-gradient(145deg, rgba(67, 56, 202, 0.62), rgba(30, 41, 59, 0.48)) !important;
+  border-color: rgba(103, 232, 249, 0.5) !important;
+}
+
+.ff-3d .ff-upload-picker svg {
+  color: #67e8f9;
+}
+
+.ff-3d .ff-settings-btn {
+  border-color: rgba(129, 140, 248, 0.38) !important;
+  background: linear-gradient(145deg, rgba(49, 46, 129, 0.72), rgba(30, 41, 59, 0.46)) !important;
+  color: #67e8f9 !important;
+  text-shadow: 0 0 10px rgba(103, 232, 249, 0.22);
+}
+
+.ff-3d .ff-settings-btn:hover {
+  border-color: rgba(103, 232, 249, 0.52) !important;
+  background: linear-gradient(145deg, rgba(67, 56, 202, 0.72), rgba(30, 41, 59, 0.5)) !important;
+}
+
+.ff-3d .ff-settings-pill {
+  border-color: rgba(103, 232, 249, 0.45) !important;
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.24), rgba(129, 140, 248, 0.28)) !important;
+  color: #67e8f9 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 0 14px rgba(56, 189, 248, 0.2);
+}
+
+.ff-3d .ff-settings-pill:hover {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.3), rgba(129, 140, 248, 0.34)) !important;
+}
+
+.ff-3d .ff-holdings-filterbar {
+  border-color: rgba(129, 140, 248, 0.35) !important;
+  background: linear-gradient(145deg, rgba(49, 46, 129, 0.52), rgba(30, 41, 59, 0.3)) !important;
+}
+
+.ff-3d .ff-holdings-filter-icon {
+  color: #67e8f9 !important;
+}
+
+.ff-3d .ff-holdings-filter-input {
+  color: #a5f3fc !important;
+}
+
+.ff-3d .ff-holdings-filter-input::placeholder {
+  color: rgba(125, 211, 252, 0.72) !important;
+}
+
+.ff-3d .ff-holdings-filter-select {
+  border-color: rgba(103, 232, 249, 0.4) !important;
+  background: linear-gradient(135deg, rgba(49, 46, 129, 0.75), rgba(30, 41, 59, 0.48)) !important;
+  color: #67e8f9 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 12px rgba(56, 189, 248, 0.18);
+}
+
+.ff-3d table th {
+  color: #818cf8 !important;
+}
+
+.ff-3d table td {
+  color: #a5f3fc !important;
+}
+
+@keyframes ff-kpi-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.65; }
+  50% { transform: scale(1.1); opacity: 0.95; }
+}
+
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .safe-area-pb {
     padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);

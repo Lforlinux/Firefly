@@ -60,12 +60,14 @@ CREATE TABLE IF NOT EXISTS transactions (
   currency TEXT NOT NULL DEFAULT 'GBP',
   transaction_date DATE NOT NULL,
   notes TEXT,
+  source_id TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_holding_id ON transactions(holding_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_user_source_id_unique ON transactions(user_id, source_id) WHERE source_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS price_cache (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

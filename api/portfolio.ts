@@ -56,6 +56,11 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
         asOf: new Date(f.as_of).toISOString(),
       }
     }
+    const refreshTimes = [
+      ...(prices.rows || []).map((p: any) => new Date(p.as_of).getTime()),
+      ...(fxRates.rows || []).map((f: any) => new Date(f.as_of).getTime()),
+    ].filter((t) => Number.isFinite(t))
+    const lastRefresh = refreshTimes.length ? new Date(Math.max(...refreshTimes)).toISOString() : null
 
     const settings = settingsRow.rows?.[0]
       ? {
@@ -102,7 +107,7 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
       settings,
       prices: pricesMap,
       fxRates: fxMap,
-      lastRefresh: null,
+      lastRefresh,
     })
   } catch (e) {
     return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })

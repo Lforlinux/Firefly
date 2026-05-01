@@ -9,8 +9,10 @@ const PALETTE = [
   '#22c55e', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#0ea5e9',
   '#ec4899', '#10b981', '#6366f1', '#f97316', '#14b8a6', '#84cc16',
 ]
+const PALETTE_3D = ['#22d3ee', '#38bdf8', '#67e8f9', '#a78bfa', '#e879f9', '#f59e0b', '#34d399']
 
 function colorFor(idx: number) { return PALETTE[idx % PALETTE.length] }
+function colorFor3d(idx: number) { return PALETTE_3D[idx % PALETTE_3D.length] }
 
 const TYPE_COLORS: Record<string, string> = {
   stock: '#22c55e',
@@ -23,7 +25,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 export function Sectors() {
   const { data, isLoading, error } = usePortfolio()
-  const { selectedOwner } = useUi()
+  const { selectedOwner, visualStyle } = useUi()
 
   const view = useMemo(() => {
     if (!data) return null
@@ -43,6 +45,7 @@ export function Sectors() {
   if (!data || !view) return null
 
   const { sectorSlices, typeSlices, base } = view
+  const is3d = visualStyle === 'premium3d'
 
   return (
     <>
@@ -62,11 +65,22 @@ export function Sectors() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={sectorSlices} dataKey="valueBase" nameKey="key" innerRadius={56} outerRadius={96} paddingAngle={2}>
-                      {sectorSlices.map((s, i) => <Cell key={s.key} fill={colorFor(i)} />)}
+                      {sectorSlices.map((s, i) => (
+                        <Cell
+                          key={s.key}
+                          fill={is3d ? colorFor3d(i) : colorFor(i)}
+                          stroke={is3d ? 'rgba(224,231,255,0.65)' : '#e2e8f0'}
+                          strokeWidth={1.2}
+                        />
+                      ))}
                     </Pie>
                     <Tooltip
                       formatter={(v: number) => formatMoney(v, base)}
-                      contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9' }}
+                      contentStyle={is3d
+                        ? { background: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(129,140,248,0.45)', borderRadius: 12, color: '#a5f3fc', boxShadow: '0 10px 30px rgba(99,102,241,0.35)' }
+                        : { background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9' }}
+                      labelStyle={is3d ? { color: '#67e8f9' } : undefined}
+                      itemStyle={is3d ? { color: '#a5f3fc' } : undefined}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -84,11 +98,22 @@ export function Sectors() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={typeSlices} dataKey="valueBase" nameKey="key" innerRadius={56} outerRadius={96} paddingAngle={2}>
-                      {typeSlices.map((s) => <Cell key={s.key} fill={TYPE_COLORS[s.key] || '#64748b'} />)}
+                      {typeSlices.map((s, i) => (
+                        <Cell
+                          key={s.key}
+                          fill={is3d ? colorFor3d(i) : (TYPE_COLORS[s.key] || '#64748b')}
+                          stroke={is3d ? 'rgba(224,231,255,0.65)' : '#e2e8f0'}
+                          strokeWidth={1.2}
+                        />
+                      ))}
                     </Pie>
                     <Tooltip
                       formatter={(v: number) => formatMoney(v, base)}
-                      contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9' }}
+                      contentStyle={is3d
+                        ? { background: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(129,140,248,0.45)', borderRadius: 12, color: '#a5f3fc', boxShadow: '0 10px 30px rgba(99,102,241,0.35)' }
+                        : { background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9' }}
+                      labelStyle={is3d ? { color: '#67e8f9' } : undefined}
+                      itemStyle={is3d ? { color: '#a5f3fc' } : undefined}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -119,7 +144,7 @@ export function Sectors() {
                   <tr key={s.key} className="hover:bg-slate-50/60 dark:hover:bg-slate-900/40">
                     <td className="px-5 py-2.5">
                       <span className="inline-flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: colorFor(i) }} />
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: is3d ? colorFor3d(i) : colorFor(i) }} />
                         <span className="font-medium text-slate-900 dark:text-slate-100">{s.key}</span>
                       </span>
                     </td>

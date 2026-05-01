@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   currency VARCHAR(3) NOT NULL DEFAULT 'GBP',
   transaction_date DATE NOT NULL,
   notes TEXT,
+  source_id TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -87,6 +88,7 @@ CREATE INDEX idx_holdings_user_id ON holdings(user_id);
 CREATE INDEX idx_snapshots_user_id ON snapshots(user_id);
 CREATE INDEX idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX idx_transactions_holding_id ON transactions(holding_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_user_source_id_unique ON transactions(user_id, source_id) WHERE source_id IS NOT NULL;
 CREATE INDEX idx_users_sessions_user_id ON users_sessions(user_id);
 CREATE INDEX idx_price_cache_ticker ON price_cache(ticker);
 CREATE INDEX idx_fx_cache_pair ON fx_cache(from_currency, to_currency);

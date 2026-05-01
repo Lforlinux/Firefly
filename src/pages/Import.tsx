@@ -1,20 +1,29 @@
 import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { Upload, AlertCircle, CheckCircle2, Loader } from 'lucide-react'
-import { Card, PageHeader, PageBody, Loading, EmptyState } from '@/components/ui'
-import { ImportPreview, ImportedTransaction } from '@/types/import'
+import { useMutation } from '@tanstack/react-query'
+import { Upload, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Card, PageHeader, PageBody, Loading } from '@/components/ui'
+import { ImportPreview } from '@/types/import'
 import { previewInvestEngineCSV, commitImport } from '@/services/importService'
 import { formatMoney } from '@/utils/format'
 
 type ImportStep = 'select-source' | 'configure' | 'preview' | 'confirming' | 'done'
+const OWNERS = ['KLN', 'Priya'] as const
+type OwnerName = typeof OWNERS[number]
+
+function withOwnerNote(existingNotes: string | undefined, owner: OwnerName): string {
+  const withoutOwner = (existingNotes || '').replace(/(^|\s*\|\s*)Owner:\s*[A-Za-z0-9 _'-]+/gi, '').trim()
+  return withoutOwner ? `Owner: ${owner} | ${withoutOwner}` : `Owner: ${owner}`
+}
 
 export function Import() {
   const [step, setStep] = useState<ImportStep>('select-source')
-  const [source, setSource] = useState<'investengine' | 'trading212' | null>(null)
+  const [source, setSource] = useState<'investengine' | 'trading212' | 'manual' | null>(null)
+  const [owner, setOwner] = useState<OwnerName>('KLN')
   const [investengineFile, setInvestengineFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [importResult, setImportResult] = useState<{
     imported: number
+    skipped?: number
     failed: number
     errors: string[]
   } | null>(null)
@@ -43,7 +52,11 @@ export function Import() {
   const commitMutation = useMutation({
     mutationFn: async () => {
       if (!preview || !source) throw new Error('No preview or source selected')
-      return commitImport(source, preview.transactions)
+      const tagged = preview.transactions.map((tx) => ({
+        ...tx,
+        notes: withOwnerNote(tx.notes, owner),
+      }))
+      return commitImport(source, tagged)
     },
     onSuccess: (data) => {
       setImportResult(data)
@@ -57,14 +70,24 @@ export function Import() {
       <>
         <PageHeader title="Import Portfolio Data" subtitle="Choose your data source" />
         <PageBody>
+          <Card tone="soft" className="p-4 mb-4">
+            <div className="text-xs text-slate-500 font-medium mb-2">Owner (required)</div>
+            <select
+              value={owner}
+              onChange={(e) => setOwner(e.target.value as OwnerName)}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900"
+            >
+              {OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </Card>
           <div className="grid gap-4 md:grid-cols-2">
             {/* CSV Upload */}
-            <Card className="p-6 hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSource('investengine')}>
+            <Card tone="elevated" className="p-6 hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSource('investengine')}>
               <div className="space-y-3">
                 <h3 className="font-semibold">Portfolio CSV</h3>
                 <p className="text-sm text-slate-500">Upload holdings or transactions</p>
                 <div className="space-y-2">
-                  <label className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded hover:bg-slate-100 cursor-pointer dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800">
+                  <label className="ff-upload-picker flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded hover:bg-slate-100 cursor-pointer dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800">
                     <Upload className="h-4 w-4" />
                     <span className="text-sm">Choose file</span>
                     <input
@@ -98,20 +121,20 @@ export function Import() {
       <>
         <PageHeader
           title="Preview: Portfolio CSV"
-          subtitle={`${preview.validRecords} of ${preview.totalRecords} records valid`}
+          subtitle={`${preview.validRecords} of ${preview.totalRecords} records valid · Owner: ${owner}`}
         />
         <PageBody>
           {/* Status cards */}
           <div className="grid gap-4 md:grid-cols-3 mb-6">
-            <Card className="p-4">
+            <Card tone="elevated" className="p-4">
               <div className="text-xs text-slate-500 font-medium mb-1">Total Records</div>
               <div className="text-2xl font-bold">{preview.totalRecords}</div>
             </Card>
-            <Card className="p-4">
+            <Card tone="elevated" className="p-4">
               <div className="text-xs text-slate-500 font-medium mb-1">Valid</div>
               <div className="text-2xl font-bold text-emerald-600">{preview.validRecords}</div>
             </Card>
-            <Card className="p-4">
+            <Card tone="elevated" className="p-4">
               <div className="text-xs text-slate-500 font-medium mb-1">Success Rate</div>
               <div className="text-2xl font-bold">{validPct}%</div>
             </Card>
@@ -119,7 +142,7 @@ export function Import() {
 
           {/* Errors */}
           {preview.errorRecords.length > 0 && (
-            <Card className="p-4 mb-6 bg-rose-50 border-rose-200 dark:bg-rose-950 dark:border-rose-800">
+            <Card tone="soft" className="p-4 mb-6 bg-rose-50 border-rose-200 dark:bg-rose-950 dark:border-rose-800">
               <div className="flex gap-3">
                 <AlertCircle className="h-5 w-5 text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
@@ -139,7 +162,7 @@ export function Import() {
 
           {/* Transactions table */}
           {preview.transactions.length > 0 && (
-            <Card className="!p-0 mb-6 overflow-hidden">
+            <Card tone="elevated" className="!p-0 mb-6 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
@@ -193,7 +216,7 @@ export function Import() {
                 setPreview(null)
                 setSource(null)
               }}
-              className="px-4 py-2 rounded border border-slate-200 text-sm font-medium hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
+              className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
             >
               Back
             </button>
@@ -204,7 +227,7 @@ export function Import() {
                   commitMutation.mutate()
                 }}
                 disabled={commitMutation.isPending}
-                className="px-4 py-2 rounded bg-emerald-600 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-slate-900 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
               >
                 {commitMutation.isPending ? 'Importing...' : `Import ${preview.validRecords} transactions`}
               </button>
@@ -221,12 +244,17 @@ export function Import() {
       <>
         <PageHeader title="Import Complete" subtitle="Portfolio data has been imported" />
         <PageBody>
-          <Card className="p-6 text-center space-y-4">
+          <Card tone="elevated" className="p-6 text-center space-y-4">
             <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto" />
             <div>
               <div className="text-3xl font-bold text-emerald-600">{importResult.imported}</div>
               <div className="text-sm text-slate-500">transactions imported successfully</div>
             </div>
+            {(importResult.skipped || 0) > 0 && (
+              <div className="rounded bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-950 dark:text-amber-200">
+                {importResult.skipped} transactions skipped as duplicates
+              </div>
+            )}
 
             {importResult.failed > 0 && (
               <div className="rounded bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950 dark:text-rose-200">
@@ -250,7 +278,7 @@ export function Import() {
                 setSource(null)
                 setImportResult(null)
               }}
-              className="px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700"
+              className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
             >
               Import more data
             </button>
