@@ -25,3 +25,4 @@ ghostfolio/
 # IDE / OS
 .DS_Store
 *.log
+.vercel

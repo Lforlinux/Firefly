@@ -1,0 +1,92 @@
+-- Firefly Portfolio Tracker PostgreSQL Schema
+-- Stage 1: Auth + Holdings management
+
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS users_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  refresh_token VARCHAR(512) NOT NULL UNIQUE,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS holdings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ticker VARCHAR(50) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  type VARCHAR(50) NOT NULL,
+  sector VARCHAR(100),
+  shares DECIMAL(20, 8) NOT NULL,
+  avg_cost DECIMAL(15, 4) NOT NULL DEFAULT 0,
+  currency VARCHAR(3) NOT NULL DEFAULT 'GBP',
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  snapshot_date DATE NOT NULL,
+  total_value DECIMAL(15, 2),
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, snapshot_date)
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  holding_id UUID NOT NULL REFERENCES holdings(id) ON DELETE CASCADE,
+  transaction_type VARCHAR(50) NOT NULL,
+  shares DECIMAL(20, 8) NOT NULL,
+  price DECIMAL(15, 4) NOT NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'GBP',
+  transaction_date DATE NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS price_cache (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticker VARCHAR(50) NOT NULL,
+  price DECIMAL(15, 4) NOT NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'GBP',
+  last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(ticker, currency)
+);
+
+CREATE TABLE IF NOT EXISTS fx_cache (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_currency VARCHAR(3) NOT NULL,
+  to_currency VARCHAR(3) NOT NULL,
+  rate DECIMAL(15, 8) NOT NULL,
+  last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(from_currency, to_currency)
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  base_currency VARCHAR(3) NOT NULL DEFAULT 'GBP',
+  theme VARCHAR(50) DEFAULT 'dark',
+  last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for common queries
+CREATE INDEX idx_holdings_user_id ON holdings(user_id);
+CREATE INDEX idx_snapshots_user_id ON snapshots(user_id);
+CREATE INDEX idx_transactions_user_id ON transactions(user_id);
+CREATE INDEX idx_transactions_holding_id ON transactions(holding_id);
+CREATE INDEX idx_users_sessions_user_id ON users_sessions(user_id);
+CREATE INDEX idx_price_cache_ticker ON price_cache(ticker);
+CREATE INDEX idx_fx_cache_pair ON fx_cache(from_currency, to_currency);

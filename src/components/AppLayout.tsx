@@ -1,173 +1,160 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { useApp } from '@/context/AppContext'
 import {
-  Home,
-  TrendingUp,
-  Receipt,
-  History as HistoryIcon,
-  Target,
-  Menu,
-  ChevronDown,
+  BarChart3,
+  ChevronLeft,
   ChevronRight,
-  User,
+  Coins,
+  Flame,
+  LayoutDashboard,
+  LineChart,
+  Moon,
+  PieChart,
   RefreshCw,
+  Settings as SettingsIcon,
+  Sun,
+  Table,
+  Upload,
+  Users,
+  Wallet,
 } from 'lucide-react'
+import { usePortfolio, useRefreshPrices, useUi } from '@/context/AppContext'
+import { listOwners } from '@/utils/calculations'
+import { formatRelative } from '@/utils/format'
 
-const SIDEBAR_WIDTH = 260
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; end?: boolean }
+const NAV: NavItem[] = [
+  { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
+  { to: '/holdings', label: 'Holdings', icon: Table },
+  { to: '/performance', label: 'Performance', icon: LineChart },
+  { to: '/sectors', label: 'Sectors', icon: PieChart },
+  { to: '/dividends', label: 'Dividends', icon: Coins },
+  { to: '/transactions', label: 'Transactions', icon: BarChart3 },
+  { to: '/import', label: 'Import', icon: Upload },
+]
 
 export function AppLayout() {
-  const { selectedPortfolio, setSelectedPortfolio } = useApp()
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
-  const [portfoliosOpen, setPortfoliosOpen] = useState(true)
+  const [collapsed, setCollapsed] = useState(false)
+  const { theme, toggleTheme, selectedOwner, setSelectedOwner } = useUi()
+  const { data: portfolio } = usePortfolio()
+  const refresh = useRefreshPrices()
+
+  const owners = useMemo(() => (portfolio ? listOwners(portfolio.holdings) : []), [portfolio])
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+    [
+      'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
       isActive
-        ? 'bg-emerald-600/20 text-emerald-400'
-        : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-    }`
+        ? 'bg-emerald-500/15 text-emerald-400'
+        : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-100',
+    ].join(' ')
+
+  const ownerBtnClass = (active: boolean) =>
+    [
+      'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+      active ? 'bg-emerald-500/15 text-emerald-400' : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-100',
+    ].join(' ')
 
   return (
-    <div className="flex min-h-screen bg-gray-200 dark:bg-gray-950 text-gray-900">
-      {/* Dark sidebar - full height with gradient fill so no empty flat area */}
+    <div className="flex min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <aside
-        className="fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-gray-700 bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950 text-gray-300 transition-[width] duration-200 md:static md:h-auto"
-        style={{ width: sidebarCollapsed ? 72 : SIDEBAR_WIDTH }}
+        className="sticky top-0 z-40 flex h-screen flex-col border-r border-slate-800 bg-slate-900 text-slate-200 transition-[width] duration-200"
+        style={{ width: collapsed ? 72 : 248 }}
       >
-        {/* Brand / account */}
-        <div className="flex h-14 items-center justify-between border-b border-gray-800 px-3">
-          {!sidebarCollapsed && (
-            <div className="flex min-w-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed(true)}
-                className="rounded p-1 hover:bg-gray-800"
-                aria-label="Collapse sidebar"
-              >
-                <ChevronDown className="h-4 w-4 rotate-[-90deg]" />
-              </button>
-              <span className="truncate text-sm font-semibold text-white">
-                KLN Retirement and Wealth
-              </span>
+        {/* Brand */}
+        <div className="flex h-14 items-center justify-between border-b border-slate-800 px-3">
+          <div className="flex items-center gap-2 overflow-hidden">
+            <Flame className="h-6 w-6 shrink-0 text-amber-400" />
+            {!collapsed && <span className="truncate text-sm font-semibold tracking-tight text-white">Firefly</span>}
+          </div>
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            className="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
+        </div>
+
+        {/* Refresh button */}
+        <div className="px-3 py-3">
+          <button
+            type="button"
+            onClick={() => refresh.mutate()}
+            disabled={refresh.isPending}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${refresh.isPending ? 'animate-spin' : ''}`} />
+            {!collapsed && <span>{refresh.isPending ? 'Refreshing…' : 'Refresh prices'}</span>}
+          </button>
+          {!collapsed && (
+            <p className="mt-2 text-[11px] text-slate-500">
+              Last: {formatRelative(portfolio?.lastRefresh || null)}
+            </p>
+          )}
+          {!collapsed && refresh.isError && (
+            <p className="mt-1 text-[11px] text-rose-400">{(refresh.error as Error).message}</p>
+          )}
+        </div>
+
+        {/* Owner filter */}
+        {!collapsed && owners.length > 0 && (
+          <div className="border-y border-slate-800 px-2 py-3">
+            <div className="mb-1 flex items-center gap-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              <Users className="h-3.5 w-3.5" />
+              Portfolio
             </div>
-          )}
-          {sidebarCollapsed && (
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed(false)}
-              className="rounded p-2 hover:bg-gray-800"
-              aria-label="Expand sidebar"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          )}
-        </div>
-
-        {/* Portfolios + Nav - scrollable, fills space */}
-        <div className="flex-1 overflow-y-auto py-4 min-h-0">
-          {!sidebarCollapsed && (
-            <>
-              <button
-                type="button"
-                onClick={() => setPortfoliosOpen((o) => !o)}
-                className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 hover:bg-gray-800/50"
-              >
-                Portfolios
-                {portfoliosOpen ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
+            <div className="space-y-0.5">
+              <button type="button" onClick={() => setSelectedOwner('all')} className={ownerBtnClass(selectedOwner === 'all')}>
+                All
               </button>
-              {portfoliosOpen && (
-                <div className="space-y-0.5 px-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPortfolio('KLN')}
-                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-                      selectedPortfolio === 'KLN'
-                        ? 'bg-emerald-600/20 text-emerald-400'
-                        : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-                    }`}
-                  >
-                    <User className="h-4 w-4 shrink-0" />
-                    <span>KLN</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPortfolio('Priya')}
-                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-                      selectedPortfolio === 'Priya'
-                        ? 'bg-emerald-600/20 text-emerald-400'
-                        : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-                    }`}
-                  >
-                    <User className="h-4 w-4 shrink-0" />
-                    <span>Priya</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPortfolio('all')}
-                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-                      selectedPortfolio === 'all'
-                        ? 'bg-emerald-600/20 text-emerald-400'
-                        : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-                    }`}
-                  >
-                    <RefreshCw className="h-4 w-4 shrink-0" />
-                    <span>All</span>
-                  </button>
-                </div>
-              )}
-            </>
-          )}
+              {owners.map((o) => (
+                <button key={o} type="button" onClick={() => setSelectedOwner(o)} className={ownerBtnClass(selectedOwner === o)}>
+                  {o}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
-          {/* Main nav */}
-          <nav className="mt-4 space-y-0.5 px-2">
-            <NavLink to="/" className={navLinkClass}>
-              <Home className="h-5 w-5 shrink-0" />
-              {!sidebarCollapsed && <span>Dashboard</span>}
+        {/* Main nav */}
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
+          {NAV.map(({ to, label, icon: Icon, end }) => (
+            <NavLink key={to} to={to} end={end} className={navLinkClass}>
+              <Icon className="h-5 w-5 shrink-0" />
+              {!collapsed && <span>{label}</span>}
             </NavLink>
-            <NavLink to="/investments" className={navLinkClass}>
-              <TrendingUp className="h-5 w-5 shrink-0" />
-              {!sidebarCollapsed && <span>Portfolio</span>}
-            </NavLink>
-            <NavLink to="/expenses" className={navLinkClass}>
-              <Receipt className="h-5 w-5 shrink-0" />
-              {!sidebarCollapsed && <span>Expenses</span>}
-            </NavLink>
-            <NavLink to="/history" className={navLinkClass}>
-              <HistoryIcon className="h-5 w-5 shrink-0" />
-              {!sidebarCollapsed && <span>History</span>}
-            </NavLink>
-            <NavLink to="/goals" className={navLinkClass}>
-              <Target className="h-5 w-5 shrink-0" />
-              {!sidebarCollapsed && <span>Goals</span>}
-            </NavLink>
-            <NavLink to="/more" className={navLinkClass}>
-              <Menu className="h-5 w-5 shrink-0" />
-              {!sidebarCollapsed && <span>More</span>}
-            </NavLink>
-          </nav>
+          ))}
+        </nav>
+
+        {/* Footer */}
+        <div className="border-t border-slate-800 px-2 py-3">
+          <NavLink to="/settings" className={navLinkClass}>
+            <SettingsIcon className="h-5 w-5 shrink-0" />
+            {!collapsed && <span>Settings</span>}
+          </NavLink>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-slate-800/60 hover:text-slate-100"
+          >
+            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            {!collapsed && <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
+          </button>
         </div>
 
-        {/* Sidebar footer - always visible so bottom never looks empty */}
-        <div className="shrink-0 border-t border-gray-700/80 px-3 py-3 bg-gray-950/50">
-          {!sidebarCollapsed ? (
-            <p className="text-xs text-gray-500">Personal finance</p>
-          ) : (
-            <p className="text-[10px] text-gray-600 text-center font-medium" title="Personal finance">PF</p>
-          )}
-        </div>
+        {!collapsed && (
+          <div className="border-t border-slate-800 px-3 py-2 text-[11px] text-slate-500">
+            <Wallet className="mr-1 inline h-3 w-3" />
+            Base: {portfolio?.settings?.baseCurrency || 'GBP'}
+          </div>
+        )}
       </aside>
 
-      {/* Main content - single unified panel with border so it doesn't clash with sidebar */}
-      <div
-        className={`flex min-w-0 flex-1 flex-col min-h-screen border-l border-gray-200 bg-white shadow-sm ${sidebarCollapsed ? 'pl-[72px]' : 'pl-[260px]'} md:pl-0`}
-      >
+      <main className="flex min-w-0 flex-1 flex-col">
         <Outlet />
-      </div>
+      </main>
     </div>
   )
 }

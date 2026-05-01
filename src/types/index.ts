@@ -1,122 +1,91 @@
-export type Currency = 'GBP'
-export type Exchange = 'NASDAQ' | 'LSE'
-export type AssetCategory = 'Equity' | 'ETF' | 'Gold' | 'Debt' | 'Cash'
-export type AssetSubCategory = 'Large Cap' | 'Mid and small cap' | 'Stock' | 'Debt/Fixed' | 'Physical'
+/**
+ * Firefly schema types — the single source of truth for the frontend.
+ * Mirrors data.json + data.cache.json (server merges them in /api/portfolio).
+ */
+
+export type CurrencyCode = string // 'GBP' | 'INR' | 'USD' | 'EUR' | ...
+
+export type HoldingType = 'stock' | 'etf' | 'cash' | 'commodity' | 'crypto' | 'bond'
 
 export interface Holding {
   id: string
+  ticker: string
   name: string
-  symbol: string
-  exchange: Exchange
-  category: AssetCategory
-  subCategory?: AssetSubCategory
-  unitPrice: number
-  units: number
-  averageCost: number
-  currency: Currency
-  owner?: 'KLN' | 'Priya'
-  broker?: 'InvestEngine' | 'Trading212'
-  bank?: 'Plum' | 'HSBC' | 'Lloyds'
-  addedDate?: string
-  lastUpdated?: string
+  type: HoldingType
+  sector: string
+  shares: number
+  avgCost: number
+  currency: CurrencyCode
+  notes: string
 }
 
-export interface NetworthSnapshot {
-  month: string
-  ukPortfolioGBP: number
-  totalGBP: number
-  cash: number
-  debt: number
-  equity: number
-  gold: number
-}
-
-/** Single date snapshot of UK portfolio value (for growth chart) */
-export interface UkPortfolioSnapshot {
-  date: string
+export interface Snapshot {
+  date: string // YYYY-MM-DD
   valueGBP: number
 }
 
-export interface FIREMilestone {
-  name: string
-  multiplier: number
-  targetAmount: number
-  currentProgress: number
-  yearsToReach: number
-}
-
-export interface BudgetCategory {
+export interface Transaction {
   id: string
-  name: string
-  amount: number
-  currency: Currency
-  spent?: number
+  date: string // YYYY-MM-DD
+  ticker: string
+  side: 'buy' | 'sell' | 'dividend' | 'split' | 'fee'
+  shares: number
+  price: number
+  currency: CurrencyCode
+  notes: string
 }
 
-export interface Expense {
-  id: string
-  date: string
-  amount: number
-  currency: Currency
-  item: string
-  category: string
-  paymentMode?: string
-  notes?: string
+export interface PriceQuote {
+  price: number
+  currency: CurrencyCode
+  asOf: string // ISO timestamp
 }
 
-export interface DebtItem {
-  id: string
-  name: string
-  monthlyPayment: number
-  totalMonths: number
-  monthsCompleted: number
-  totalRemaining: number
-  interestRate?: number
-  currency: Currency
+export interface FxRate {
+  rate: number
+  asOf: string // ISO timestamp
 }
 
-export interface Mortgage {
-  loanAmount: number
-  annualRate: number
-  termMonths: number
-  monthlyPayment: number
-  extraMonthlyPayment?: number
-  startDate: string
-  currency: Currency
+export interface Settings {
+  baseCurrency: CurrencyCode
+  lastUpdated: string
 }
 
-export interface SIP {
-  id: string
-  name: string
-  symbol: string
-  monthlyAmount: number
-  investmentDate: number
-  currency: Currency
-  status: 'Active' | 'Paused'
-  platform?: string
+/** Server-managed cache (data.cache.json). Wipeable. */
+export interface PriceCache {
+  prices: Record<string, PriceQuote>          // keyed by ticker
+  fxRates: Record<string, FxRate>             // keyed by `${FROM}_${TO}`
+  lastRefresh: string
 }
 
-export interface IdealAllocation {
-  cash: number
-  debt: number
-  gold: number
-  pf: number
+/** Shape returned by GET /api/portfolio — data.json + data.cache.json merged. */
+export interface Portfolio extends PriceCache {
+  holdings: Holding[]
+  snapshots: Snapshot[]
+  transactions: Transaction[]
+  settings: Settings
 }
 
-export interface AppState {
-  ukHoldings: Holding[]
-  networthHistory: NetworthSnapshot[]
-  ukPortfolioHistory: UkPortfolioSnapshot[]
-  totalPortfolioHistory: UkPortfolioSnapshot[]
-  expenses: Expense[]
-  budgets: { uk: BudgetCategory[] }
-  debts: DebtItem[]
-  mortgage: Mortgage | null
-  emergencyFund: { balance: number; targetMonths: number; currency: Currency }
-  annualExpensesGBP: number
-  idealAllocation: IdealAllocation
-  sipList: SIP[]
-  cashAddedDatesVersion: number
-  cashAddedDates: Record<string, string>
-  selectedPortfolio: 'all' | 'KLN' | 'Priya'
+/** UI-derived: a holding plus its computed price/value/G&L in base currency. */
+export interface HoldingRow extends Holding {
+  /** Owner extracted from notes ("Owner: KLN" → "KLN"). undefined if not tagged. */
+  owner?: string
+  /** Last fetched price in the *security's listing currency*. null if no refresh yet. */
+  livePrice: number | null
+  livePriceCcy: CurrencyCode | null
+  livePriceAt: string | null
+  /** Value in base currency: shares × livePrice × fx[livePriceCcy → base], or cost basis fallback. */
+  valueBase: number
+  /** True if `valueBase` was computed from cost basis because no live price was available. */
+  valueIsCost: boolean
+  /** Cost basis in base currency: shares × avgCost × fx[holding.currency → base]. */
+  costBase: number
+  /** valueBase − costBase. */
+  gainLoss: number
+  /** % gain or loss vs cost basis. 0 when costBase is 0 (cash). */
+  gainLossPct: number
+  /** valueBase as a fraction of total portfolio value (0..1). Filled by the consumer. */
+  weight: number
 }
+
+export type OwnerFilter = 'all' | string

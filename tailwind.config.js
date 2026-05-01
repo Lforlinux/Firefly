@@ -9,10 +9,12 @@ export default {
     extend: {
       colors: {
         primary: { DEFAULT: '#4A90E2', dark: '#3B7BC9' },
-        success: '#4CAF50',
-        warning: '#FF9800',
-        error: '#F44336',
-        accent: '#9C27B0',
+        gain: '#22c55e',
+        loss: '#ef4444',
+        success: '#22c55e',
+        warning: '#f59e0b',
+        error: '#ef4444',
+        accent: '#a855f7',
       },
       fontFamily: {
         sans: ['DM Sans', 'system-ui', 'sans-serif'],
