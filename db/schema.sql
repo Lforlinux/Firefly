@@ -84,11 +84,21 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 -- Indexes for common queries
-CREATE INDEX idx_holdings_user_id ON holdings(user_id);
-CREATE INDEX idx_snapshots_user_id ON snapshots(user_id);
-CREATE INDEX idx_transactions_user_id ON transactions(user_id);
-CREATE INDEX idx_transactions_holding_id ON transactions(holding_id);
+CREATE INDEX IF NOT EXISTS idx_holdings_user_id ON holdings(user_id);
+CREATE INDEX IF NOT EXISTS idx_snapshots_user_id ON snapshots(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_holding_id ON transactions(holding_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_user_source_id_unique ON transactions(user_id, source_id) WHERE source_id IS NOT NULL;
-CREATE INDEX idx_users_sessions_user_id ON users_sessions(user_id);
-CREATE INDEX idx_price_cache_ticker ON price_cache(ticker);
-CREATE INDEX idx_fx_cache_pair ON fx_cache(from_currency, to_currency);
+CREATE INDEX IF NOT EXISTS idx_users_sessions_user_id ON users_sessions(user_id);
+
+-- Migrations: align price_cache / fx_cache with API schema
+ALTER TABLE price_cache ADD COLUMN IF NOT EXISTS as_of TIMESTAMPTZ;
+UPDATE price_cache SET as_of = last_updated WHERE as_of IS NULL;
+ALTER TABLE price_cache ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+ALTER TABLE fx_cache ADD COLUMN IF NOT EXISTS pair TEXT;
+UPDATE fx_cache SET pair = from_currency || '-' || to_currency WHERE pair IS NULL;
+ALTER TABLE fx_cache ADD COLUMN IF NOT EXISTS as_of TIMESTAMPTZ;
+UPDATE fx_cache SET as_of = last_updated WHERE as_of IS NULL;
+ALTER TABLE fx_cache ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fx_cache_pair ON fx_cache(pair);
