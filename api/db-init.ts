@@ -4,6 +4,7 @@
  * Usage: POST /api/db-init (with secret token for security)
  */
 
+import { VercelRequest, VercelResponse } from '@vercel/node'
 import pg from 'pg'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -15,7 +16,7 @@ const SCHEMA_PATH = path.join(REPO_ROOT, 'db', 'schema.sql')
 
 const INIT_SECRET = process.env.DB_INIT_SECRET || 'dev-secret'
 
-export default async function handler(req, res) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Verify secret
   const secret = req.headers['x-db-init-secret'] || req.query.secret
   if (secret !== INIT_SECRET) {
@@ -64,10 +65,11 @@ export default async function handler(req, res) {
       tables,
     })
   } catch (error) {
-    console.error('[db-init] Error:', error.message)
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[db-init] Error:', errorMsg)
     return res.status(500).json({
       error: 'Database initialization failed',
-      details: error.message,
+      details: errorMsg,
     })
   } finally {
     await client.end()
