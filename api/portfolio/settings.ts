@@ -13,6 +13,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 async function getSettings(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     const db = await getDbClient()
 
     const result = await db.query(
@@ -40,6 +43,9 @@ async function getSettings(req: VercelRequest, res: VercelResponse) {
 async function updateSettings(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     const { base_currency, theme } = req.body
 
     const db = await getDbClient()

@@ -17,6 +17,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 async function getSnapshots(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     const db = await getDbClient()
 
     const snapshots = await db.query(
@@ -40,6 +43,9 @@ async function getSnapshots(req: VercelRequest, res: VercelResponse) {
 async function createSnapshot(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     const { snapshot_date, total_value, notes } = req.body
 
     if (!snapshot_date) {
@@ -72,6 +78,9 @@ async function createSnapshot(req: VercelRequest, res: VercelResponse) {
 async function updateSnapshot(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     const { id, total_value, notes } = req.body
 
     if (!id) {
@@ -109,6 +118,9 @@ async function updateSnapshot(req: VercelRequest, res: VercelResponse) {
 async function deleteSnapshot(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     const { id } = req.body
 
     if (!id) {
