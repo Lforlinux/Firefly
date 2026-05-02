@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { requireAuth, getDbClient } from '../lib/vercel-auth'
+import { requireAuth, getDbClient } from './_lib/vercel-auth'
 
 const YAHOO_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart'
 const YAHOO_HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; Firefly/1.0)' }
