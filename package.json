@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.100.2",
+    "@vercel/node": "^3.2.29",
     "better-sqlite3": "^11.6.0",
     "csv-parse": "^6.2.1",
     "date-fns": "^4.1.0",

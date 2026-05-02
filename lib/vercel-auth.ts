@@ -173,10 +173,14 @@ export interface DbClient {
  */
 export async function getDbClient(): Promise<DbClient> {
   if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    const url = process.env.POSTGRES_URL || process.env.DATABASE_URL
+    if (!url) {
+      throw new Error('Database not configured: set POSTGRES_URL (Vercel Postgres) on the project.')
+    }
     // Production: use Vercel Postgres
     const pg = await import('pg');
     const client = new pg.Client({
-      connectionString: process.env.POSTGRES_URL,
+      connectionString: url,
       ssl: { rejectUnauthorized: false },
     });
     await client.connect();
