@@ -17,6 +17,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 async function getHoldings(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     const db = await getDbClient()
 
     const holdings = await db.query(
@@ -37,6 +40,9 @@ async function getHoldings(req: VercelRequest, res: VercelResponse) {
 async function createHolding(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     const { ticker, name, type, sector, shares, avg_cost, currency, notes } = req.body
 
     if (!ticker || !name || !type || shares === undefined || avg_cost === undefined) {
@@ -65,6 +71,9 @@ async function createHolding(req: VercelRequest, res: VercelResponse) {
 async function updateHolding(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     const { id, ticker, name, type, sector, shares, avg_cost, currency, notes } = req.body
 
     if (!id) {
@@ -109,6 +118,9 @@ async function updateHolding(req: VercelRequest, res: VercelResponse) {
 async function deleteHolding(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     const { id } = req.body
 
     if (!id) {

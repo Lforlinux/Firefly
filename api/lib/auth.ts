@@ -172,11 +172,15 @@ export interface DbClient {
 export async function getDbClient(): Promise<DbClient> {
   if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
     // Production: use Vercel Postgres
-    const { sql } = await import('@vercel/postgres');
+    const pg = await import('pg');
+    const client = new pg.Client({
+      connectionString: process.env.POSTGRES_URL,
+      ssl: { rejectUnauthorized: false },
+    });
+    await client.connect();
     return {
       query: async (sqlText: string, values?: any[]) => {
-        const result = await sql(sqlText, values);
-        return { rows: result.rows };
+        return client.query(sqlText, values);
       },
     };
   } else {

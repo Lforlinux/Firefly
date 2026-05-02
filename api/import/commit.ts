@@ -25,8 +25,9 @@ function inferHoldingType(tx: ImportedTransaction): 'stock' | 'etf' | 'cash' {
 
 function buildStableSourceId(source: string, tx: ImportedTransaction, ticker: string, qty: number, price: number, currency: string): string {
   if (tx.sourceId && tx.sourceId.trim()) return tx.sourceId.trim()
-  // Deterministic fallback key (source-agnostic) for cross-source dedupe.
+  // Deterministic fallback key (includes source for multi-source deduping).
   return [
+    source,
     tx.type,
     tx.date,
     ticker,
