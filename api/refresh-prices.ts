@@ -72,8 +72,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await db.query(
           `INSERT INTO price_cache (ticker, price, currency, as_of, updated_at)
            VALUES ($1,$2,$3,$4,NOW())
-           ON CONFLICT (ticker) DO UPDATE
-           SET price = EXCLUDED.price, currency = EXCLUDED.currency, as_of = EXCLUDED.as_of, updated_at = NOW()`,
+           ON CONFLICT (ticker, currency) DO UPDATE
+           SET price = EXCLUDED.price, as_of = EXCLUDED.as_of, updated_at = NOW()`,
           [ticker, q.price, q.currency, q.asOf]
         )
       } catch (e) {
