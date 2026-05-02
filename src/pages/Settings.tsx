@@ -1,13 +1,17 @@
-import { useMemo } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { usePortfolio, useUi } from '@/context/AppContext'
 import { formatRelative, formatDate } from '@/utils/format'
 import { Card, Loading, PageBody, PageHeader } from '@/components/ui'
 import { LogoutButton } from '@/components/LogoutButton'
-import { loadLiabilities } from '@/utils/liabilities'
+import { loadLiabilities, saveLiabilities } from '@/utils/liabilities'
+import { savePortfolio } from '@/services/api'
 
 export function Settings() {
-  const { data, isLoading } = usePortfolio()
+  const { data, isLoading, refetch } = usePortfolio()
   const { theme, toggleTheme, visualStyle, toggleVisualStyle, privacyMode, togglePrivacyMode, selectedOwner } = useUi()
+  const importRef = useRef<HTMLInputElement>(null)
+  const [importState, setImportState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [importMsg, setImportMsg] = useState('')
 
   const fxRows = useMemo(() => {
     if (!data) return []
@@ -101,6 +105,43 @@ export function Settings() {
     )
   }
 
+  async function importJson(file: File) {
+    setImportState('loading')
+    setImportMsg('')
+    try {
+      const text = await file.text()
+      const bundle = JSON.parse(text)
+      if (bundle.app !== 'Firefly' || !bundle.portfolio) throw new Error('Not a valid Firefly export file')
+
+      const { portfolio, liabilities, goals, essentials, firePlanner, preferences } = bundle
+
+      await savePortfolio({
+        holdings: portfolio.holdings || [],
+        snapshots: portfolio.snapshots || [],
+        transactions: portfolio.transactions || [],
+        settings: portfolio.settings,
+      })
+
+      if (Array.isArray(liabilities)) saveLiabilities(liabilities)
+      if (goals) localStorage.setItem('firefly.goals', JSON.stringify(goals))
+      if (essentials) localStorage.setItem('firefly.essentials', JSON.stringify(essentials))
+      if (firePlanner) localStorage.setItem('firefly.firePlanner', JSON.stringify(firePlanner))
+      if (preferences) {
+        if (preferences.theme) localStorage.setItem('firefly.theme', preferences.theme)
+        if (preferences.visualStyle) localStorage.setItem('firefly.visualStyle', preferences.visualStyle)
+        if (preferences.selectedOwner) localStorage.setItem('firefly.owner', preferences.selectedOwner)
+      }
+
+      await refetch()
+      setImportState('done')
+      setImportMsg(`Imported ${portfolio.holdings?.length ?? 0} holdings, ${portfolio.snapshots?.length ?? 0} snapshots, ${portfolio.transactions?.length ?? 0} transactions.`)
+    } catch (e) {
+      setImportState('error')
+      setImportMsg(e instanceof Error ? e.message : 'Import failed')
+    }
+    if (importRef.current) importRef.current.value = ''
+  }
+
   if (isLoading) return <Loading />
   if (!data) return null
 
@@ -126,6 +167,26 @@ export function Settings() {
             >
               Export JSON
             </button>
+          </div>
+        </Card>
+
+        <Card tone="elevated">
+          <h3 className="text-sm font-semibold">Import Data</h3>
+          <p className="mt-1 text-xs text-slate-500">Restore from a Firefly JSON export. This replaces all current holdings, snapshots, and transactions.</p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <label className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
+              {importState === 'loading' ? 'Importing…' : 'Choose JSON file'}
+              <input
+                ref={importRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                disabled={importState === 'loading'}
+                onChange={(e) => { if (e.target.files?.[0]) importJson(e.target.files[0]) }}
+              />
+            </label>
+            {importState === 'done' && <span className="text-xs text-emerald-600">✓ {importMsg}</span>}
+            {importState === 'error' && <span className="text-xs text-rose-600">✗ {importMsg}</span>}
           </div>
         </Card>
 

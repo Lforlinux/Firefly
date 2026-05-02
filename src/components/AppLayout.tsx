@@ -9,6 +9,7 @@ import {
   HandCoins,
   Home,
   Layers3,
+  LogOut,
   Moon,
   PieChart,
   PlusCircle,
@@ -22,6 +23,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { usePortfolio, useRefreshPrices, useUi } from '@/context/AppContext'
+import { useAuth } from '@/context/AuthContext'
 import { listOwners } from '@/utils/calculations'
 import { formatRelative } from '@/utils/format'
 
@@ -41,6 +43,7 @@ const MOBILE_NAV = NAV.slice(0, 5)
 
 export function AppLayout() {
   const { theme, toggleTheme, visualStyle, privacyMode, togglePrivacyMode, selectedOwner, setSelectedOwner } = useUi()
+  const { logout } = useAuth()
   const { data: portfolio } = usePortfolio()
   const refresh = useRefreshPrices()
   const owners = useMemo(() => (portfolio ? listOwners(portfolio.holdings) : []), [portfolio])
@@ -185,6 +188,10 @@ export function AppLayout() {
             <button type="button" onClick={toggleTheme} className={navLinkClass({ isActive: false })}>
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+            </button>
+            <button type="button" onClick={() => logout()} className={navLinkClass({ isActive: false })}>
+              <LogOut className="h-4 w-4" />
+              <span>Sign out</span>
             </button>
           </div>
 

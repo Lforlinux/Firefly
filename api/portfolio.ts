@@ -130,10 +130,11 @@ async function savePortfolio(req: VercelRequest, res: VercelResponse) {
     await db.query(`DELETE FROM snapshots WHERE user_id = $1`, [auth.userId])
     await db.query(`DELETE FROM holdings WHERE user_id = $1`, [auth.userId])
 
+    const holdingIdMap: Record<string, string> = {}
     for (const h of body.holdings) {
-      await db.query(
+      const inserted = await db.query(
         `INSERT INTO holdings (user_id, ticker, name, type, sector, shares, avg_cost, currency, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
         [
           auth.userId,
           h.ticker || 'UNKNOWN',
@@ -146,6 +147,30 @@ async function savePortfolio(req: VercelRequest, res: VercelResponse) {
           h.notes || null,
         ]
       )
+      if (h.id) holdingIdMap[h.id] = inserted.rows[0].id
+    }
+
+    if (Array.isArray(body.transactions)) {
+      for (const t of body.transactions) {
+        const newHoldingId = holdingIdMap[t.holdingId || t.holding_id] || null
+        if (!newHoldingId) continue
+        await db.query(
+          `INSERT INTO transactions (user_id, holding_id, transaction_type, shares, price, currency, transaction_date, notes, source_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           ON CONFLICT DO NOTHING`,
+          [
+            auth.userId,
+            newHoldingId,
+            t.side || t.transaction_type || 'buy',
+            Number(t.shares || 0),
+            Number(t.price || 0),
+            t.currency || 'GBP',
+            t.date || t.transaction_date || new Date().toISOString().slice(0, 10),
+            t.notes || null,
+            t.id || null,
+          ]
+        )
+      }
     }
 
     if (Array.isArray(body.snapshots)) {
