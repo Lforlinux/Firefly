@@ -16,7 +16,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireAuth, clearCookieHeader } from '../lib/auth';
+import { requireAuth, clearCookieHeader } from '../../lib/vercel-auth';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {

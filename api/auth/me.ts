@@ -15,7 +15,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireAuth } from '../lib/auth';
+import { requireAuth } from '../../lib/vercel-auth';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {

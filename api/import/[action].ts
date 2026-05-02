@@ -1,5 +1,9 @@
+/**
+ * Single Serverless Function for Hobby plan limits:
+ * /api/import/commit and /api/import/trading212 via dynamic segment `action`.
+ */
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { requireAuth, getDbClient } from '../lib/auth'
+import { requireAuth, getDbClient } from '../../lib/vercel-auth'
 
 type ImportedTransaction = {
   date: string
@@ -25,7 +29,6 @@ function inferHoldingType(tx: ImportedTransaction): 'stock' | 'etf' | 'cash' {
 
 function buildStableSourceId(source: string, tx: ImportedTransaction, ticker: string, qty: number, price: number, currency: string): string {
   if (tx.sourceId && tx.sourceId.trim()) return tx.sourceId.trim()
-  // Deterministic fallback key (includes source for multi-source deduping).
   return [
     source,
     tx.type,
@@ -38,9 +41,7 @@ function buildStableSourceId(source: string, tx: ImportedTransaction, ticker: st
   ].join('|')
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-
+async function handleCommit(req: VercelRequest, res: VercelResponse) {
   const auth = requireAuth(req)
   if (!auth) return res.status(401).json({ error: 'Unauthorized' })
 
@@ -55,7 +56,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let imported = 0
     let skipped = 0
 
-    // Backward-compatible safety: ensure dedupe column/index exist.
     await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source_id TEXT`)
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_user_source_id_unique ON transactions(user_id, source_id) WHERE source_id IS NOT NULL`)
 
@@ -86,14 +86,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         const sourceId = buildStableSourceId(source, tx, ticker, qtyForTx, priceForTx, currency)
 
-        // Find or create holding for this user+ticker.
         const existing = await db.query(
           `SELECT id FROM holdings WHERE user_id = $1 AND ticker = $2 LIMIT 1`,
           [auth.userId, ticker]
         )
         let holdingId = existing.rows?.[0]?.id
 
-        // Idempotency guard #1: exact source key.
         const existingBySource = await db.query(
           `SELECT id FROM transactions WHERE user_id = $1 AND source_id = $2 LIMIT 1`,
           [auth.userId, sourceId]
@@ -103,7 +101,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           continue
         }
 
-        // Idempotency guard #2: semantic duplicate across different sources.
         if (holdingId) {
           const existingByFingerprint = await db.query(
             `SELECT id
@@ -143,7 +140,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           )
           holdingId = inserted.rows?.[0]?.id
         } else if (normalizedTxType === 'buy') {
-          // Lightweight running-share update for visibility in holdings table.
           await db.query(
             `UPDATE holdings
              SET shares = shares + $3,
@@ -185,3 +181,101 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+type Trading212Position = {
+  ticker?: string
+  symbol?: string
+  isin?: string
+  name?: string
+  quantity?: number | string
+  shares?: number | string
+  averagePrice?: number | string
+  avgPrice?: number | string
+  average_price?: number | string
+  currency?: string
+}
+
+async function handleTrading212(req: VercelRequest, res: VercelResponse) {
+  const auth = requireAuth(req)
+  if (!auth) return res.status(401).json({ error: 'Unauthorized' })
+
+  try {
+    const { positions, owner } = req.body || {}
+    if (!Array.isArray(positions)) {
+      return res.status(400).json({ error: 'positions must be an array' })
+    }
+
+    const transactions: Array<Record<string, unknown>> = []
+    const errorRecords: Array<{ rowIndex: number; message: string }> = []
+    const date = new Date().toISOString().slice(0, 10)
+
+    positions.forEach((p: Trading212Position, idx: number) => {
+      try {
+        const ticker = String(p.ticker || p.symbol || '').trim().toUpperCase()
+        const isin = String(p.isin || '').trim().toUpperCase() || undefined
+        const name = String(p.name || '').trim() || undefined
+        const quantity = Number(p.quantity ?? p.shares ?? 0)
+        const price = Number(p.averagePrice ?? p.avgPrice ?? p.average_price ?? 0)
+        const ccy = String(p.currency || 'GBP').toUpperCase()
+
+        if (!ticker && !isin) {
+          errorRecords.push({ rowIndex: idx, message: 'Missing ticker/isin' })
+          return
+        }
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          errorRecords.push({ rowIndex: idx, message: 'Invalid quantity' })
+          return
+        }
+        if (!Number.isFinite(price) || price <= 0) {
+          errorRecords.push({ rowIndex: idx, message: 'Invalid price' })
+          return
+        }
+
+        transactions.push({
+          date,
+          type: 'buy',
+          ticker: ticker || undefined,
+          isin,
+          name,
+          quantity,
+          price,
+          priceCurrency: ccy,
+          total: quantity * price,
+          totalCurrency: ccy,
+          source: 'trading212',
+          sourceId: `t212-${idx}-${ticker || isin || 'row'}`,
+          notes: owner ? `Owner: ${owner}` : undefined,
+        })
+      } catch (e) {
+        errorRecords.push({ rowIndex: idx, message: e instanceof Error ? e.message : 'Parse failed' })
+      }
+    })
+
+    return res.status(200).json({
+      source: 'trading212',
+      totalRecords: positions.length,
+      validRecords: transactions.length,
+      errorRecords,
+      transactions,
+    })
+  } catch (e) {
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })
+  }
+}
+
+function actionFromRequest(req: VercelRequest): string {
+  const q = req.query.action
+  const fromQuery = typeof q === 'string' ? q : Array.isArray(q) ? q[0] : ''
+  if (fromQuery) return fromQuery
+  const url = req.url || ''
+  const m = url.match(/\/api\/import\/([^/?]+)/)
+  return m ? m[1] : ''
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  const action = actionFromRequest(req)
+  if (action === 'commit') return handleCommit(req, res)
+  if (action === 'trading212') return handleTrading212(req, res)
+  return res.status(404).json({ error: 'Unknown import action' })
+}

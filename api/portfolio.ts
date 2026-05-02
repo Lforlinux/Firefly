@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { requireAuth, getDbClient } from './lib/auth'
+import { requireAuth, getDbClient } from '../lib/vercel-auth'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') return getPortfolio(req, res)

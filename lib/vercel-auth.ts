@@ -1,6 +1,8 @@
 /**
  * Authentication utilities for HTTP-only cookie-based JWT flow
  * Used by auth endpoints (signup, login, logout) and middleware (requireAuth)
+ *
+ * Lives outside `api/` so Vercel does not count this file as a Serverless Function.
  */
 
 import crypto from 'crypto';
