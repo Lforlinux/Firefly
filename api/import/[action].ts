@@ -85,6 +85,8 @@ async function handleCommit(req: VercelRequest, res: VercelResponse) {
           continue
         }
         const sourceId = buildStableSourceId(source, tx, ticker, qtyForTx, priceForTx, currency)
+        // Snapshot rows (e.g. t212-pos-NVDA-1) represent current state, not a transaction to accumulate.
+        const isSnapshot = sourceId.startsWith('t212-pos-')
 
         const existing = await db.query(
           `SELECT id FROM holdings WHERE user_id = $1 AND ticker = $2 LIMIT 1`,
@@ -92,70 +94,71 @@ async function handleCommit(req: VercelRequest, res: VercelResponse) {
         )
         let holdingId = existing.rows?.[0]?.id
 
-        const existingBySource = await db.query(
-          `SELECT id FROM transactions WHERE user_id = $1 AND source_id = $2 LIMIT 1`,
-          [auth.userId, sourceId]
-        )
-        if (existingBySource.rows?.[0]?.id) {
-          skipped++
-          continue
-        }
-
-        if (holdingId) {
-          const existingByFingerprint = await db.query(
-            `SELECT id
-             FROM transactions
-             WHERE user_id = $1
-               AND holding_id = $2
-               AND transaction_type = $3
-               AND transaction_date = $4::date
-               AND currency = $5
-               AND ABS(shares - $6) < 1e-8
-               AND ABS(price - $7) < 1e-8
-             LIMIT 1`,
-            [auth.userId, holdingId, txType, tx.date, currency, qtyForTx, priceForTx]
-          )
-          if (existingByFingerprint.rows?.[0]?.id) {
-            skipped++
-            continue
+        // For snapshots: upsert the holding with exact shares/cost, then skip if already recorded.
+        if (isSnapshot) {
+          if (!holdingId) {
+            const inserted = await db.query(
+              `INSERT INTO holdings (user_id, ticker, name, type, sector, shares, avg_cost, currency, notes)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+              [auth.userId, ticker, tx.name || ticker, inferHoldingType(tx), null, qtyForTx, priceForTx, currency, tx.notes || `Imported from ${source}`]
+            )
+            holdingId = inserted.rows?.[0]?.id
+          } else {
+            // Always overwrite with latest snapshot values
+            await db.query(
+              `UPDATE holdings SET shares = $3, avg_cost = $4, name = $5, currency = $6, updated_at = NOW()
+               WHERE user_id = $1 AND id = $2`,
+              [auth.userId, holdingId, qtyForTx, priceForTx, tx.name || ticker, currency]
+            )
+            // Remove stale snapshot transactions for this holding so re-import is idempotent
+            await db.query(
+              `DELETE FROM transactions WHERE user_id = $1 AND holding_id = $2 AND source_id LIKE 't212-pos-%'`,
+              [auth.userId, holdingId]
+            )
           }
-        }
+        } else {
+          // Regular transaction: check dedup by source_id first
+          const existingBySource = await db.query(
+            `SELECT id FROM transactions WHERE user_id = $1 AND source_id = $2 LIMIT 1`,
+            [auth.userId, sourceId]
+          )
+          if (existingBySource.rows?.[0]?.id) { skipped++; continue }
 
-        if (!holdingId) {
-          const inserted = await db.query(
-            `INSERT INTO holdings (user_id, ticker, name, type, sector, shares, avg_cost, currency, notes)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-             RETURNING id`,
-            [
-              auth.userId,
-              ticker,
-              tx.name || ticker,
-              inferHoldingType(tx),
-              null,
-              normalizedTxType === 'buy' ? qtyForTx : 0,
-              priceForTx,
-              currency,
-              tx.notes || `Imported from ${source}`,
-            ]
-          )
-          holdingId = inserted.rows?.[0]?.id
-        } else if (normalizedTxType === 'buy') {
-          await db.query(
-            `UPDATE holdings
-             SET shares = shares + $3,
-                 avg_cost = CASE WHEN avg_cost = 0 THEN $4 ELSE avg_cost END,
-                 updated_at = NOW()
-             WHERE user_id = $1 AND id = $2`,
-            [auth.userId, holdingId, qtyForTx, priceForTx]
-          )
-        } else if (normalizedTxType === 'sell') {
-          await db.query(
-            `UPDATE holdings
-             SET shares = GREATEST(shares - $3, 0),
-                 updated_at = NOW()
-             WHERE user_id = $1 AND id = $2`,
-            [auth.userId, holdingId, qtyForTx]
-          )
+          // Fallback fingerprint dedup (catches imports without stable source_ids)
+          if (holdingId) {
+            const existingByFingerprint = await db.query(
+              `SELECT id FROM transactions
+               WHERE user_id = $1 AND holding_id = $2 AND transaction_type = $3
+                 AND transaction_date = $4::date AND currency = $5
+                 AND ABS(shares - $6) < 1e-8 AND ABS(price - $7) < 1e-8
+               LIMIT 1`,
+              [auth.userId, holdingId, txType, tx.date, currency, qtyForTx, priceForTx]
+            )
+            if (existingByFingerprint.rows?.[0]?.id) { skipped++; continue }
+          }
+
+          if (!holdingId) {
+            const inserted = await db.query(
+              `INSERT INTO holdings (user_id, ticker, name, type, sector, shares, avg_cost, currency, notes)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+              [auth.userId, ticker, tx.name || ticker, inferHoldingType(tx), null,
+               normalizedTxType === 'buy' ? qtyForTx : 0, priceForTx, currency, tx.notes || `Imported from ${source}`]
+            )
+            holdingId = inserted.rows?.[0]?.id
+          } else if (normalizedTxType === 'buy') {
+            await db.query(
+              `UPDATE holdings SET shares = shares + $3,
+                 avg_cost = CASE WHEN avg_cost = 0 THEN $4 ELSE avg_cost END, updated_at = NOW()
+               WHERE user_id = $1 AND id = $2`,
+              [auth.userId, holdingId, qtyForTx, priceForTx]
+            )
+          } else if (normalizedTxType === 'sell') {
+            await db.query(
+              `UPDATE holdings SET shares = GREATEST(shares - $3, 0), updated_at = NOW()
+               WHERE user_id = $1 AND id = $2`,
+              [auth.userId, holdingId, qtyForTx]
+            )
+          }
         }
 
         await db.query(
