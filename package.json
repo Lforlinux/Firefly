@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:lib": "esbuild lib/vercel-auth.ts --bundle --platform=node --format=esm --outfile=lib/vercel-auth.js --external:pg --external:jsonwebtoken",
+    "build:lib": "esbuild lib/vercel-auth.ts --bundle --platform=node --format=esm --outfile=lib/vercel-auth.js --external:pg",
     "build": "npm run build:lib && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",

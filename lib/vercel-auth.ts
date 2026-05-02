@@ -5,7 +5,8 @@
  */
 
 import * as crypto from 'crypto';
-import * as jwt from 'jsonwebtoken';
+/** CJS package: default import so `jwt.sign` exists under Node ESM */
+import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-change-in-production';
 const JWT_EXPIRY = '7d'; // 7 days
