@@ -5,8 +5,8 @@
  * Lives outside `api/` so Vercel does not count this file as a Serverless Function.
  */
 
-import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
+import * as crypto from 'crypto';
+import * as jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-change-in-production';
 const JWT_EXPIRY = '7d'; // 7 days
