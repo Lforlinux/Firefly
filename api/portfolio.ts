@@ -127,8 +127,12 @@ async function savePortfolio(req: VercelRequest, res: VercelResponse) {
     const db = await getDbClient()
 
     await db.query(`DELETE FROM transactions WHERE user_id = $1`, [auth.userId])
-    await db.query(`DELETE FROM snapshots WHERE user_id = $1`, [auth.userId])
-    await db.query(`DELETE FROM holdings WHERE user_id = $1`, [auth.userId])
+    if (Array.isArray(body.snapshots)) {
+      await db.query(`DELETE FROM snapshots WHERE user_id = $1`, [auth.userId])
+    }
+    if (body.holdings.length > 0 || body.clearHoldings === true) {
+      await db.query(`DELETE FROM holdings WHERE user_id = $1`, [auth.userId])
+    }
 
     const holdingIdMap: Record<string, string> = {}
     for (const h of body.holdings) {
