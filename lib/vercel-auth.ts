@@ -1,6 +1,6 @@
 /**
- * Authentication + DB helpers for Vercel serverless routes.
- * Kept under `api/_lib/` so it ships with the function bundle; `_lib` is not a public route.
+ * Authentication + DB helpers shared by Vercel serverless routes.
+ * Ship path is ensured via `vercel.json` → `functions.*.includeFiles` (`lib/**`).
  */
 
 import * as crypto from 'crypto';

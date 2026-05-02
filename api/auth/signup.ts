@@ -18,7 +18,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { hashPassword, createToken, setCookieHeader, getDbClient } from '../_lib/vercel-auth';
+import { hashPassword, createToken, setCookieHeader, getDbClient } from '../../lib/vercel-auth';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
