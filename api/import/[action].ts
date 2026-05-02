@@ -3,7 +3,7 @@
  * /api/import/commit and /api/import/trading212 via dynamic segment `action`.
  */
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { requireAuth, getDbClient } from '../../lib/vercel-auth'
+import { requireAuth, getDbClient } from '../../lib/vercel-auth.js'
 
 type ImportedTransaction = {
   date: string

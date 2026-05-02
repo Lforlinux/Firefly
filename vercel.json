@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "api/**/*.ts": {
-      "includeFiles": "lib/**"
+      "includeFiles": "lib/vercel-auth.js"
     }
   }
 }

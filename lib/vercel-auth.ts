@@ -1,6 +1,7 @@
 /**
  * Authentication + DB helpers shared by Vercel serverless routes.
- * Ship path is ensured via `vercel.json` → `functions.*.includeFiles` (`lib/**`).
+ * Runtime loads `lib/vercel-auth.js` (ESM). Regenerate: `npm run build:lib`.
+ * `vercel.json` includes `lib/vercel-auth.js` in each API function bundle.
  */
 
 import * as crypto from 'crypto';

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:lib": "esbuild lib/vercel-auth.ts --bundle --platform=node --format=esm --outfile=lib/vercel-auth.js --external:pg --external:jsonwebtoken",
+    "build": "npm run build:lib && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "node server/index.js"
@@ -16,6 +17,7 @@
     "better-sqlite3": "^11.6.0",
     "csv-parse": "^6.2.1",
     "date-fns": "^4.1.0",
+    "esbuild": "^0.28.0",
     "framer-motion": "^12.34.3",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.460.0",
