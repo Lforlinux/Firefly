@@ -7,11 +7,19 @@ import { requireAuth, getDbClient } from '../lib/vercel-auth.js'
  * US stocks: ticker.us  (e.g. nvda.us)
  * UK stocks: ticker.uk  (e.g. vuag.uk)
  */
+// Tickers that have been renamed/rebranded — map old stored name to current market ticker
+const TICKER_ALIASES: Record<string, string> = {
+  FB:   'META',   // Meta Platforms (rebranded Oct 2021)
+  AAXN: 'AXON',  // Axon Enterprise (rebranded Apr 2021)
+  TWTR: 'X',     // X Corp (formerly Twitter)
+}
+
 async function stooqPrice(ticker: string): Promise<{ price: number; currency: string } | { error: string }> {
+  const lookupTicker = TICKER_ALIASES[ticker.toUpperCase()] || ticker
   // Map ticker to Stooq symbol format. Yahoo uses VUAG.L for LSE; Stooq uses VUAG.UK.
-  const stooqSym = ticker.endsWith('.L')
-    ? ticker.replace(/\.L$/, '.UK').toLowerCase()
-    : `${ticker.toLowerCase()}.us`
+  const stooqSym = lookupTicker.endsWith('.L')
+    ? lookupTicker.replace(/\.L$/, '.UK').toLowerCase()
+    : `${lookupTicker.toLowerCase()}.us`
   const isUK = stooqSym.endsWith('.uk')
 
   try {
