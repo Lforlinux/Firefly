@@ -7,7 +7,7 @@ import { requireAuth, getDbClient } from '../lib/vercel-auth.js'
  * US stocks: ticker.us  (e.g. nvda.us)
  * UK stocks: ticker.uk  (e.g. vuag.uk)
  */
-async function stooqPrice(ticker: string): Promise<{ price: number; currency: string } | null> {
+async function stooqPrice(ticker: string): Promise<{ price: number; currency: string } | { error: string }> {
   // Map ticker to Stooq symbol format. Yahoo uses VUAG.L for LSE; Stooq uses VUAG.UK.
   const stooqSym = ticker.endsWith('.L')
     ? ticker.replace(/\.L$/, '.UK').toLowerCase()
@@ -17,16 +17,18 @@ async function stooqPrice(ticker: string): Promise<{ price: number; currency: st
   try {
     const url = `https://stooq.com/q/l/?s=${stooqSym}&f=s,c&e=json`
     const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
-    if (!res.ok) return null
-    const body = await res.json()
+    if (!res.ok) return { error: `HTTP ${res.status}` }
+    const text = await res.text()
+    let body: any
+    try { body = JSON.parse(text) } catch { return { error: `Bad JSON: ${text.slice(0, 80)}` } }
     const item = body?.symbols?.[0]
     const price = parseFloat(item?.close)
-    if (!Number.isFinite(price) || price <= 0) return null
+    if (!Number.isFinite(price) || price <= 0) return { error: `No price in: ${JSON.stringify(item)}` }
     // UK stocks price in pence (GBX) → convert to GBP
     if (isUK) return { price: price / 100, currency: 'GBP' }
     return { price, currency: 'USD' }
-  } catch {
-    return null
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'fetch failed' }
   }
 }
 
@@ -70,10 +72,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Fetch prices individually (Stooq doesn't support batch — comma-separated treats as one symbol)
     await Promise.all(tickers.map(async (ticker) => {
       const q = await stooqPrice(ticker)
-      if (q) {
-        pricesMap[ticker] = { ...q, asOf }
+      if ('error' in q) {
+        errors.push({ ticker, error: q.error })
       } else {
-        errors.push({ ticker, error: 'No quote from Stooq' })
+        pricesMap[ticker] = { ...q, asOf }
       }
     }))
 
