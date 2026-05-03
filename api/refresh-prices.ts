@@ -65,9 +65,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const holdingsRes = await db.query(`SELECT ticker, type, currency FROM holdings WHERE user_id = $1`, [auth.userId])
     const holdings: { ticker: string; type: string; currency: string }[] = holdingsRes.rows || []
 
-    // Ensure constraints exist (live DB may predate schema additions)
-    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_price_cache_ticker_currency ON price_cache(ticker, currency)`)
-    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_fx_cache_pair ON fx_cache(pair)`)
 
     const tickers = [...new Set(
       holdings
@@ -92,13 +89,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       errors.push({ error: `Stooq fetch failed: ${e instanceof Error ? e.message : 'unknown'}` } as any)
     }
 
-    // Upsert prices
+    // Write prices: delete-then-insert avoids any ON CONFLICT constraint issues
     for (const [ticker, q] of Object.entries(pricesMap)) {
+      await db.query(`DELETE FROM price_cache WHERE ticker = $1`, [ticker])
       await db.query(
-        `INSERT INTO price_cache (ticker, price, currency, as_of, updated_at)
-         VALUES ($1,$2,$3,$4,NOW())
-         ON CONFLICT (ticker, currency) DO UPDATE
-         SET price = EXCLUDED.price, as_of = EXCLUDED.as_of, updated_at = NOW()`,
+        `INSERT INTO price_cache (ticker, price, currency, as_of, updated_at) VALUES ($1,$2,$3,$4,NOW())`,
         [ticker, q.price, q.currency, q.asOf]
       )
     }
@@ -138,13 +133,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Self-pair always 1
     fxRatesMap[`${base}_${base}`] = { rate: 1, asOf }
 
-    // Upsert FX rates
+    // Write FX rates: delete-then-insert
     for (const [pair, { rate, asOf: pAsOf }] of Object.entries(fxRatesMap)) {
+      await db.query(`DELETE FROM fx_cache WHERE pair = $1`, [pair])
       await db.query(
-        `INSERT INTO fx_cache (pair, rate, as_of, updated_at)
-         VALUES ($1,$2,$3,NOW())
-         ON CONFLICT (pair) DO UPDATE
-         SET rate = EXCLUDED.rate, as_of = EXCLUDED.as_of, updated_at = NOW()`,
+        `INSERT INTO fx_cache (pair, rate, as_of, updated_at) VALUES ($1,$2,$3,NOW())`,
         [pair, rate, pAsOf]
       )
     }
