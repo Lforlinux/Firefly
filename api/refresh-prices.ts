@@ -7,36 +7,27 @@ import { requireAuth, getDbClient } from '../lib/vercel-auth.js'
  * US stocks: ticker.us  (e.g. nvda.us)
  * UK stocks: ticker.uk  (e.g. vuag.uk)
  */
-async function stooqPrices(tickers: string[]): Promise<Record<string, { price: number; currency: string }>> {
-  if (tickers.length === 0) return {}
-  // Map ticker → stooq symbol. Yahoo uses VUAG.L for LSE; Stooq uses VUAG.UK.
-  const symbolMap: Record<string, string> = {}
-  for (const t of tickers) {
-    if (t.endsWith('.L')) {
-      symbolMap[t] = t.replace(/\.L$/, '.UK').toLowerCase()
-    } else {
-      symbolMap[t] = `${t.toLowerCase()}.us`
-    }
-  }
-  const stooqSymbols = Object.values(symbolMap).join(',')
-  const url = `https://stooq.com/q/l/?s=${stooqSymbols}&f=s,c&h&e=json`
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) })
-  if (!res.ok) throw new Error(`Stooq HTTP ${res.status}`)
-  const body = await res.json()
+async function stooqPrice(ticker: string): Promise<{ price: number; currency: string } | null> {
+  // Map ticker to Stooq symbol format. Yahoo uses VUAG.L for LSE; Stooq uses VUAG.UK.
+  const stooqSym = ticker.endsWith('.L')
+    ? ticker.replace(/\.L$/, '.UK').toLowerCase()
+    : `${ticker.toLowerCase()}.us`
+  const isUK = stooqSym.endsWith('.uk')
 
-  const reverseMap: Record<string, string> = {}
-  for (const [orig, stooq] of Object.entries(symbolMap)) reverseMap[stooq.toUpperCase()] = orig
-
-  const out: Record<string, { price: number; currency: string }> = {}
-  for (const item of body?.symbols || []) {
-    const stooqSym = String(item.symbol || '').toUpperCase()
-    const orig = reverseMap[stooqSym] || stooqSym.replace(/\.(US|UK)$/, '')
-    const price = parseFloat(item.close)
-    if (!Number.isFinite(price) || price <= 0) continue
-    const currency = stooqSym.endsWith('.UK') ? 'GBP' : 'USD'
-    out[orig] = { price, currency }
+  try {
+    const url = `https://stooq.com/q/l/?s=${stooqSym}&f=s,c&e=json`
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+    if (!res.ok) return null
+    const body = await res.json()
+    const item = body?.symbols?.[0]
+    const price = parseFloat(item?.close)
+    if (!Number.isFinite(price) || price <= 0) return null
+    // UK stocks price in pence (GBX) → convert to GBP
+    if (isUK) return { price: price / 100, currency: 'GBP' }
+    return { price, currency: 'USD' }
+  } catch {
+    return null
   }
-  return out
 }
 
 /**
@@ -76,18 +67,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const asOf = new Date().toISOString()
     const pricesMap: Record<string, { price: number; currency: string; asOf: string }> = {}
 
-    // Fetch all stock prices in one request
-    try {
-      const quotes = await stooqPrices(tickers)
-      for (const [ticker, q] of Object.entries(quotes)) {
+    // Fetch prices individually (Stooq doesn't support batch — comma-separated treats as one symbol)
+    await Promise.all(tickers.map(async (ticker) => {
+      const q = await stooqPrice(ticker)
+      if (q) {
         pricesMap[ticker] = { ...q, asOf }
-      }
-      for (const ticker of tickers.filter((t) => !pricesMap[t])) {
+      } else {
         errors.push({ ticker, error: 'No quote from Stooq' })
       }
-    } catch (e) {
-      errors.push({ error: `Stooq fetch failed: ${e instanceof Error ? e.message : 'unknown'}` } as any)
-    }
+    }))
 
     // Write prices: delete-then-insert avoids any ON CONFLICT constraint issues
     for (const [ticker, q] of Object.entries(pricesMap)) {
@@ -99,14 +87,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Determine needed FX conversions
+    // GBX = pence (not a real ISO currency) — already converted to GBP in stooqPrice, skip it
+    const ISO_ONLY = (c: string) => c && c !== 'GBX' && c.length === 3
     const neededCurrencies = new Set<string>()
     for (const h of holdings) {
       const c = h.currency?.toUpperCase()
-      if (c && c !== base) neededCurrencies.add(c)
+      if (ISO_ONLY(c) && c !== base) neededCurrencies.add(c)
     }
     for (const q of Object.values(pricesMap)) {
       const c = q.currency?.toUpperCase()
-      if (c && c !== base) neededCurrencies.add(c)
+      if (ISO_ONLY(c) && c !== base) neededCurrencies.add(c)
     }
 
     const fxRatesMap: Record<string, { rate: number; asOf: string }> = {}
@@ -133,10 +123,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Self-pair always 1
     fxRatesMap[`${base}_${base}`] = { rate: 1, asOf }
 
-    // Write FX rates: delete-then-insert (include from/to columns required by schema)
+    // Write FX rates: delete by currency columns (old rows may have hyphen pair format), then insert
     for (const [pair, { rate, asOf: pAsOf }] of Object.entries(fxRatesMap)) {
       const [fromCcy, toCcy] = pair.split('_')
-      await db.query(`DELETE FROM fx_cache WHERE pair = $1`, [pair])
+      await db.query(`DELETE FROM fx_cache WHERE from_currency = $1 AND to_currency = $2`, [fromCcy, toCcy])
       await db.query(
         `INSERT INTO fx_cache (pair, from_currency, to_currency, rate, as_of, updated_at) VALUES ($1,$2,$3,$4,$5,NOW())`,
         [pair, fromCcy, toCcy, rate, pAsOf]
