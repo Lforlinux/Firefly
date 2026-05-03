@@ -133,12 +133,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Self-pair always 1
     fxRatesMap[`${base}_${base}`] = { rate: 1, asOf }
 
-    // Write FX rates: delete-then-insert
+    // Write FX rates: delete-then-insert (include from/to columns required by schema)
     for (const [pair, { rate, asOf: pAsOf }] of Object.entries(fxRatesMap)) {
+      const [fromCcy, toCcy] = pair.split('_')
       await db.query(`DELETE FROM fx_cache WHERE pair = $1`, [pair])
       await db.query(
-        `INSERT INTO fx_cache (pair, rate, as_of, updated_at) VALUES ($1,$2,$3,NOW())`,
-        [pair, rate, pAsOf]
+        `INSERT INTO fx_cache (pair, from_currency, to_currency, rate, as_of, updated_at) VALUES ($1,$2,$3,$4,$5,NOW())`,
+        [pair, fromCcy, toCcy, rate, pAsOf]
       )
     }
 
