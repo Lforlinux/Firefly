@@ -65,6 +65,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const holdingsRes = await db.query(`SELECT ticker, type, currency FROM holdings WHERE user_id = $1`, [auth.userId])
     const holdings: { ticker: string; type: string; currency: string }[] = holdingsRes.rows || []
 
+    // Ensure constraints exist (live DB may predate schema additions)
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_price_cache_ticker_currency ON price_cache(ticker, currency)`)
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_fx_cache_pair ON fx_cache(pair)`)
+
     const tickers = [...new Set(
       holdings
         .filter((h) => h.type !== 'cash' && h.ticker && !h.ticker.startsWith('CASH:'))
