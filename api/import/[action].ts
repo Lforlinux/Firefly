@@ -421,6 +421,120 @@ async function handleT212Sync(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// InvestEngine CSV / positions sync
+// ---------------------------------------------------------------------------
+const IE_ISIN_TO_TICKER: Record<string, { ticker: string; name: string }> = {
+  'IE00B53QDK08': { ticker: 'CSJP.L',  name: 'iShares MSCI Japan' },
+  'IE00BK5BQX27': { ticker: 'VEUA.L',  name: 'Vanguard FTSE Developed Europe' },
+  'IE00BK5BQZ41': { ticker: 'VDPG.L',  name: 'Vanguard FTSE Asia Pacific Ex-Japan' },
+  'IE00BKM4GZ66': { ticker: 'EMIM.L',  name: 'iShares MSCI Emerging Markets IMI' },
+  'IE00BFMXXD54': { ticker: 'VUAG.L',  name: 'Vanguard S&P 500' },
+  'IE0032077012': { ticker: 'EQQQ.L',  name: 'Invesco Nasdaq 100' },
+  'IE00B4ND3602': { ticker: 'SGLN.L',  name: 'iShares Physical Gold' },
+}
+
+function parseInvestEngineCsv(csvText: string): Array<{ ticker: string; name: string; isin: string; shares: number; avgCost: number; currency: string }> {
+  const lines = csvText.split('\n')
+  // Find header row (contains "Transaction Type")
+  let dataStart = 0
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes('Transaction Type')) { dataStart = i + 1; break }
+  }
+
+  const totals: Record<string, { name: string; isin: string; qty: number; cost: number }> = {}
+
+  for (const line of lines.slice(dataStart)) {
+    const cols = line.split(',')
+    if (cols.length < 5) continue
+    const secRaw = cols[0].trim()
+    const m = secRaw.match(/^(.+?)\s*\/\s*ISIN\s+(\w+)$/)
+    if (!m) continue
+    const [, secName, isin] = m
+    const txType = cols[1].trim()
+    const qty = parseFloat(cols[2].trim() || '0')
+    const price = parseFloat((cols[3].trim() || '0').replace(/[£,]/g, ''))
+    if (!Number.isFinite(qty) || !Number.isFinite(price)) continue
+
+    if (!totals[isin]) totals[isin] = { name: secName.trim(), isin, qty: 0, cost: 0 }
+    if (txType === 'Buy') { totals[isin].qty += qty; totals[isin].cost += qty * price }
+    else if (txType === 'Sell') { totals[isin].qty -= qty }
+  }
+
+  return Object.entries(totals)
+    .filter(([, v]) => v.qty > 0)
+    .map(([isin, v]) => {
+      const mapped = IE_ISIN_TO_TICKER[isin]
+      return {
+        ticker: mapped?.ticker || isin,
+        name: mapped?.name || v.name,
+        isin,
+        shares: v.qty,
+        avgCost: v.qty > 0 ? v.cost / v.qty : 0,
+        currency: 'GBP',
+      }
+    })
+}
+
+async function handleInvestEngineSync(req: VercelRequest, res: VercelResponse) {
+  const auth = requireAuth(req)
+  if (!auth) return res.status(401).json({ error: 'Unauthorized' })
+
+  try {
+    const owner: string | undefined = typeof req.body?.owner === 'string' && req.body.owner.trim()
+      ? req.body.owner.trim() : undefined
+
+    let positions: Array<{ ticker: string; name: string; isin?: string; shares: number; avgCost: number; currency: string }>
+
+    if (typeof req.body?.csv === 'string' && req.body.csv.trim()) {
+      positions = parseInvestEngineCsv(req.body.csv)
+    } else if (Array.isArray(req.body?.positions) && req.body.positions.length > 0) {
+      positions = req.body.positions
+    } else {
+      return res.status(400).json({ error: 'Provide either csv (string) or positions (array) in request body' })
+    }
+
+    const db = await getDbClient()
+    const errors: string[] = []
+    let synced = 0
+
+    for (const pos of positions) {
+      try {
+        const { ticker, name, shares, avgCost, currency } = pos
+        if (!ticker || !Number.isFinite(shares) || shares <= 0) { errors.push(`${ticker}: invalid`); continue }
+        if (!Number.isFinite(avgCost) || avgCost <= 0) { errors.push(`${ticker}: invalid avgCost`); continue }
+
+        const notes = owner ? `Owner: ${owner} | Imported from investengine` : 'Imported from investengine'
+
+        const existing = await db.query(
+          `SELECT id FROM holdings WHERE user_id = $1 AND ticker = $2 LIMIT 1`,
+          [auth.userId, ticker]
+        )
+        if (existing.rows?.[0]?.id) {
+          await db.query(
+            `UPDATE holdings SET shares = $3, avg_cost = $4, name = $5, notes = $6, updated_at = NOW()
+             WHERE user_id = $1 AND id = $2`,
+            [auth.userId, existing.rows[0].id, shares, avgCost, name || ticker, notes]
+          )
+        } else {
+          await db.query(
+            `INSERT INTO holdings (user_id, ticker, name, type, shares, avg_cost, currency, notes)
+             VALUES ($1,$2,$3,'etf',$4,$5,$6,$7)`,
+            [auth.userId, ticker, name || ticker, shares, avgCost, currency || 'GBP', notes]
+          )
+        }
+        synced++
+      } catch (e) {
+        errors.push(`${pos.ticker ?? '?'}: ${e instanceof Error ? e.message : 'error'}`)
+      }
+    }
+
+    return res.status(200).json({ ok: true, synced, errors, source: 'investengine' })
+  } catch (e) {
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -428,5 +542,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (action === 'commit') return handleCommit(req, res)
   if (action === 'trading212') return handleTrading212(req, res)
   if (action === 't212-sync') return handleT212Sync(req, res)
+  if (action === 'investengine') return handleInvestEngineSync(req, res)
   return res.status(404).json({ error: 'Unknown import action' })
 }
