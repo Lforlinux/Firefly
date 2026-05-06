@@ -111,19 +111,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const t212Key = process.env.T212_API_KEY
 
     if (t212Key) {
-      // Primary: T212 REST API — works from any IP, returns live prices
+      // Primary: T212 REST API — works from any IP, returns live prices for T212 holdings
       try {
         const t212Prices = await fetchT212Prices(t212Key, tickers, asOf)
         Object.assign(pricesMap, t212Prices)
-        for (const t of tickers.filter((t) => !pricesMap[t])) {
-          errors.push({ ticker: t, error: 'Not found in T212 portfolio' })
-        }
       } catch (e) {
         errors.push({ error: `T212 API: ${e instanceof Error ? e.message : 'failed'}` } as any)
       }
-    } else {
-      // Fallback: Stooq (often blocked from Vercel IPs — set T212_API_KEY for reliable prices)
-      await Promise.all(tickers.map(async (ticker) => {
+    }
+
+    // Stooq fallback for any tickers not yet priced (e.g. InvestEngine ETFs, or when T212 key missing/invalid)
+    const unpricedTickers = tickers.filter((t) => !pricesMap[t])
+    if (unpricedTickers.length > 0) {
+      await Promise.all(unpricedTickers.map(async (ticker) => {
         const q = await stooqPrice(ticker)
         if ('error' in q) errors.push({ ticker, error: q.error })
         else pricesMap[ticker] = { ...q, asOf }
