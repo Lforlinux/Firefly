@@ -290,6 +290,10 @@ async function handleT212Sync(req: VercelRequest, res: VercelResponse) {
     [key: string]: unknown
   }>
 
+  const owner: string | undefined = typeof req.body?.owner === 'string' && req.body.owner.trim()
+    ? req.body.owner.trim()
+    : undefined
+
   if (Array.isArray(bodyPositions) && bodyPositions.length > 0) {
     positions = bodyPositions
   } else {
@@ -338,6 +342,10 @@ async function handleT212Sync(req: VercelRequest, res: VercelResponse) {
         if (!Number.isFinite(shares) || shares <= 0) { errors.push(`${ticker}: invalid quantity`); continue }
         if (!Number.isFinite(avgCost) || avgCost <= 0) { errors.push(`${ticker}: invalid averagePrice`); continue }
 
+        const notes = owner
+          ? `Owner: ${owner} | Imported from trading212`
+          : 'Imported from trading212'
+
         // UPSERT holding
         const existing = await db.query(
           `SELECT id FROM holdings WHERE user_id = $1 AND ticker = $2 LIMIT 1`,
@@ -345,14 +353,14 @@ async function handleT212Sync(req: VercelRequest, res: VercelResponse) {
         )
         if (existing.rows?.[0]?.id) {
           await db.query(
-            `UPDATE holdings SET shares = $3, avg_cost = $4, updated_at = NOW() WHERE user_id = $1 AND id = $2`,
-            [auth.userId, existing.rows[0].id, shares, avgCost]
+            `UPDATE holdings SET shares = $3, avg_cost = $4, notes = $5, updated_at = NOW() WHERE user_id = $1 AND id = $2`,
+            [auth.userId, existing.rows[0].id, shares, avgCost, notes]
           )
         } else {
           await db.query(
             `INSERT INTO holdings (user_id, ticker, name, type, shares, avg_cost, currency, notes)
              VALUES ($1,$2,$3,'stock',$4,$5,$6,$7)`,
-            [auth.userId, ticker, ticker, shares, avgCost, currency, 'Imported from trading212']
+            [auth.userId, ticker, ticker, shares, avgCost, currency, notes]
           )
         }
         synced++
