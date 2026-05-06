@@ -278,28 +278,40 @@ async function handleT212Sync(req: VercelRequest, res: VercelResponse) {
   const auth = requireAuth(req)
   if (!auth) return res.status(401).json({ error: 'Unauthorized' })
 
-  const apiKey = process.env.T212_API_KEY
-  if (!apiKey) {
-    return res.status(400).json({
-      error: 'T212_API_KEY not configured. Add it to your Vercel environment variables.',
-    })
-  }
-
   try {
+  // Positions can be supplied directly in the request body (e.g. from MCP bridge)
+  // or fetched from T212 REST API using the T212_API_KEY env var.
+  const bodyPositions = req.body?.positions
+  let positions: Array<{
+    ticker?: string
+    quantity?: number
+    averagePrice?: number
+    currentPrice?: number
+    [key: string]: unknown
+  }>
+
+  if (Array.isArray(bodyPositions) && bodyPositions.length > 0) {
+    positions = bodyPositions
+  } else {
+    const apiKey = process.env.T212_API_KEY
+    if (!apiKey) {
+      return res.status(400).json({
+        error: 'T212_API_KEY not configured. Add it to your Vercel environment variables.',
+      })
+    }
     const t212Res = await fetch('https://live.trading212.com/api/v0/equity/portfolio', {
       headers: { Authorization: apiKey },
+      signal: AbortSignal.timeout(10000),
     })
     if (!t212Res.ok) {
       const text = await t212Res.text()
-      return res.status(502).json({ error: `Trading 212 API error ${t212Res.status}: ${text}` })
+      const hint = t212Res.status === 401
+        ? ' — API key is invalid or expired. Regenerate it in T212 → Settings → API.'
+        : ''
+      return res.status(502).json({ error: `T212 API ${t212Res.status}${hint}` })
     }
-    const positions: Array<{
-      ticker?: string
-      quantity?: number
-      averagePrice?: number
-      currentPrice?: number
-      [key: string]: unknown
-    }> = await t212Res.json()
+    positions = await t212Res.json()
+  }
 
     const db = await getDbClient()
     const errors: string[] = []
