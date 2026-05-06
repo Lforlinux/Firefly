@@ -67,11 +67,15 @@ async function handleCommit(req: VercelRequest, res: VercelResponse) {
           continue
         }
 
-        const ticker = String(tx.ticker || tx.isin || '').trim().toUpperCase()
-        if (!ticker) {
+        const rawTicker = String(tx.ticker || tx.isin || '').trim().toUpperCase()
+        if (!rawTicker) {
           errors.push(`Row ${i}: Missing ticker/isin`)
           continue
         }
+        // Map bare ISINs (e.g. IE00BFMXXD54) to proper .L tickers so InvestEngine
+        // imports never create ISIN-keyed duplicate holdings.
+        const isinMapped = IE_ISIN_TO_TICKER[rawTicker]
+        const ticker = isinMapped ? isinMapped.ticker : rawTicker
 
         const shares = Number(tx.quantity ?? 0)
         const price = Number(tx.price ?? 0)
@@ -506,15 +510,17 @@ async function handleInvestEngineSync(req: VercelRequest, res: VercelResponse) {
 
         const notes = owner ? `Owner: ${owner} | Imported from investengine` : 'Imported from investengine'
 
+        // Idempotent upsert: UPDATE if ticker exists for this user, INSERT otherwise.
+        // Re-uploading the same CSV will update values, never create duplicates.
         const existing = await db.query(
           `SELECT id FROM holdings WHERE user_id = $1 AND ticker = $2 LIMIT 1`,
           [auth.userId, ticker]
         )
         if (existing.rows?.[0]?.id) {
           await db.query(
-            `UPDATE holdings SET shares = $3, avg_cost = $4, name = $5, notes = $6, updated_at = NOW()
-             WHERE user_id = $1 AND id = $2`,
-            [auth.userId, existing.rows[0].id, shares, avgCost, name || ticker, notes]
+            `UPDATE holdings SET shares=$3, avg_cost=$4, name=$5, type='etf', currency=$6, notes=$7, updated_at=NOW()
+             WHERE user_id=$1 AND id=$2`,
+            [auth.userId, existing.rows[0].id, shares, avgCost, name || ticker, currency || 'GBP', notes]
           )
         } else {
           await db.query(
