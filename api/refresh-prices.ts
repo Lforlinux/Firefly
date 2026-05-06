@@ -72,6 +72,30 @@ async function stooqPrice(ticker: string): Promise<{ price: number; currency: st
 }
 
 // ---------------------------------------------------------------------------
+// Yahoo Finance — works server-side for UK (.L) ETFs (GBp → GBP conversion)
+// ---------------------------------------------------------------------------
+async function yahooPrice(ticker: string): Promise<{ price: number; currency: string } | { error: string }> {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(6000),
+    })
+    if (!res.ok) return { error: `Yahoo HTTP ${res.status}` }
+    const body = await res.json()
+    const meta = body?.chart?.result?.[0]?.meta
+    const rawPrice = meta?.regularMarketPrice
+    const rawCcy = String(meta?.currency || '')
+    if (!Number.isFinite(rawPrice) || rawPrice <= 0) return { error: 'No price from Yahoo' }
+    // Yahoo returns GBp (pence) for LSE-listed securities — convert to GBP
+    const isGBp = rawCcy === 'GBp'
+    return { price: isGBp ? rawPrice / 100 : rawPrice, currency: isGBp ? 'GBP' : rawCcy }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'fetch failed' }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Frankfurter FX (always works)
 // ---------------------------------------------------------------------------
 async function frankfurterRates(from: string, tos: string[]): Promise<Record<string, number>> {
@@ -120,11 +144,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Stooq fallback for any tickers not yet priced (e.g. InvestEngine ETFs, or when T212 key missing/invalid)
+    // Fallback for tickers not yet priced (InvestEngine ETFs, or when T212 key missing/invalid)
+    // UK (.L) ETFs → Yahoo Finance (works server-side, returns GBp which we convert)
+    // US stocks    → Stooq
     const unpricedTickers = tickers.filter((t) => !pricesMap[t])
     if (unpricedTickers.length > 0) {
       await Promise.all(unpricedTickers.map(async (ticker) => {
-        const q = await stooqPrice(ticker)
+        const isUK = ticker.endsWith('.L')
+        const q = isUK ? await yahooPrice(ticker) : await stooqPrice(ticker)
         if ('error' in q) errors.push({ ticker, error: q.error })
         else pricesMap[ticker] = { ...q, asOf }
       }))
