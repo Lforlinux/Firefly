@@ -274,11 +274,139 @@ function actionFromRequest(req: VercelRequest): string {
   return m ? m[1] : ''
 }
 
+async function handleT212Sync(req: VercelRequest, res: VercelResponse) {
+  const auth = requireAuth(req)
+  if (!auth) return res.status(401).json({ error: 'Unauthorized' })
+
+  const apiKey = process.env.T212_API_KEY
+  if (!apiKey) {
+    return res.status(400).json({
+      error: 'T212_API_KEY not configured. Add it to your Vercel environment variables.',
+    })
+  }
+
+  try {
+    const t212Res = await fetch('https://live.trading212.com/api/v0/equity/portfolio', {
+      headers: { Authorization: apiKey },
+    })
+    if (!t212Res.ok) {
+      const text = await t212Res.text()
+      return res.status(502).json({ error: `Trading 212 API error ${t212Res.status}: ${text}` })
+    }
+    const positions: Array<{
+      ticker?: string
+      quantity?: number
+      averagePrice?: number
+      currentPrice?: number
+      [key: string]: unknown
+    }> = await t212Res.json()
+
+    const db = await getDbClient()
+    const errors: string[] = []
+    let synced = 0
+    let pricesUpdated = 0
+
+    const nonGbpCurrencies = new Set<string>()
+
+    for (const pos of positions) {
+      try {
+        const rawTicker = String(pos.ticker || '').trim()
+        if (!rawTicker) { errors.push(`Skipping position with no ticker`); continue }
+
+        // Parse ticker: NVDA_US_EQ → NVDA
+        const ticker = rawTicker.split('_')[0].toUpperCase()
+
+        // Determine currency from ticker suffix
+        let currency = 'USD'
+        if (/_UK_/.test(rawTicker)) currency = 'GBP'
+        else if (/_US_/.test(rawTicker)) currency = 'USD'
+
+        const shares = Number(pos.quantity ?? 0)
+        const avgCost = Number(pos.averagePrice ?? 0)
+        if (!Number.isFinite(shares) || shares <= 0) { errors.push(`${ticker}: invalid quantity`); continue }
+        if (!Number.isFinite(avgCost) || avgCost <= 0) { errors.push(`${ticker}: invalid averagePrice`); continue }
+
+        // UPSERT holding
+        const existing = await db.query(
+          `SELECT id FROM holdings WHERE user_id = $1 AND ticker = $2 LIMIT 1`,
+          [auth.userId, ticker]
+        )
+        if (existing.rows?.[0]?.id) {
+          await db.query(
+            `UPDATE holdings SET shares = $3, avg_cost = $4, updated_at = NOW() WHERE user_id = $1 AND id = $2`,
+            [auth.userId, existing.rows[0].id, shares, avgCost]
+          )
+        } else {
+          await db.query(
+            `INSERT INTO holdings (user_id, ticker, name, type, shares, avg_cost, currency, notes)
+             VALUES ($1,$2,$3,'stock',$4,$5,$6,$7)`,
+            [auth.userId, ticker, ticker, shares, avgCost, currency, 'Imported from trading212']
+          )
+        }
+        synced++
+
+        // Update price cache if currentPrice is valid
+        const currentPrice = Number(pos.currentPrice)
+        if (Number.isFinite(currentPrice) && currentPrice > 0) {
+          await db.query(`DELETE FROM price_cache WHERE ticker = $1`, [ticker])
+          await db.query(
+            `INSERT INTO price_cache (ticker, price, currency, as_of) VALUES ($1,$2,$3,NOW())`,
+            [ticker, currentPrice, currency]
+          )
+          pricesUpdated++
+        }
+
+        if (currency !== 'GBP') nonGbpCurrencies.add(currency)
+      } catch (e) {
+        errors.push(`${pos.ticker ?? '?'}: ${e instanceof Error ? e.message : 'error'}`)
+      }
+    }
+
+    // Fetch FX rates for non-GBP currencies
+    if (nonGbpCurrencies.size > 0) {
+      const toList = Array.from(nonGbpCurrencies)
+        .filter((c) => c !== 'GBP')
+        .join(',')
+      if (toList) {
+        try {
+          const fxRes = await fetch(`https://api.frankfurter.app/latest?from=USD&to=GBP,${toList}`)
+          if (fxRes.ok) {
+            const fxData: { rates?: Record<string, number>; date?: string } = await fxRes.json()
+            const asOf = fxData.date || new Date().toISOString().slice(0, 10)
+            for (const [toCur, rate] of Object.entries(fxData.rates || {})) {
+              const pair = `USD_${toCur}`
+              await db.query(`DELETE FROM fx_cache WHERE from_currency = $1 AND to_currency = $2`, ['USD', toCur])
+              await db.query(
+                `INSERT INTO fx_cache (pair, from_currency, to_currency, rate, as_of, updated_at)
+                 VALUES ($1,$2,$3,$4,$5,NOW())`,
+                [pair, 'USD', toCur, rate, asOf]
+              )
+            }
+          }
+        } catch {
+          errors.push('FX rate fetch failed')
+        }
+      }
+    }
+
+    return res.status(200).json({
+      ok: true,
+      synced,
+      errors,
+      pricesUpdated,
+      source: 'trading212',
+    })
+  } catch (e) {
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const action = actionFromRequest(req)
   if (action === 'commit') return handleCommit(req, res)
   if (action === 'trading212') return handleTrading212(req, res)
+  if (action === 't212-sync') return handleT212Sync(req, res)
   return res.status(404).json({ error: 'Unknown import action' })
 }

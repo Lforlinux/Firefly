@@ -154,3 +154,15 @@ export function postSnapshot(date: string, valueGBP: number): Promise<{ ok: true
     body: JSON.stringify({ date, valueGBP }),
   })
 }
+
+export function flushHoldings(sources: ('all' | 'trading212' | 'investengine')[]): Promise<{ ok: true; deleted: { holdings: number } }> {
+  return jsonFetch('/api/portfolio', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sources }),
+  })
+}
+
+export function syncTrading212(): Promise<{ ok: true; synced: number; pricesUpdated: number; errors: string[] }> {
+  return jsonFetch('/api/import/t212-sync', { method: 'POST' })
+}

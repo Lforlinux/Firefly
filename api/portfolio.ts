@@ -4,6 +4,7 @@ import { requireAuth, getDbClient } from '../lib/vercel-auth.js'
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') return getPortfolio(req, res)
   if (req.method === 'POST') return savePortfolio(req, res)
+  if (req.method === 'DELETE') return flushHoldings(req, res)
   return res.status(405).json({ error: 'Method not allowed' })
 }
 
@@ -213,3 +214,50 @@ async function savePortfolio(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+async function flushHoldings(req: VercelRequest, res: VercelResponse) {
+  const auth = requireAuth(req)
+  if (!auth) return res.status(401).json({ error: 'Unauthorized' })
+
+  const body = req.body || {}
+  const sources: string[] = Array.isArray(body.sources) ? body.sources : []
+  if (sources.length === 0) {
+    return res.status(400).json({ error: 'sources[] is required' })
+  }
+
+  try {
+    const db = await getDbClient()
+    let holdingsDeleted = 0
+    let snapshotsDeleted = 0
+
+    for (const source of sources) {
+      if (source === 'all') {
+        const result = await db.query(`DELETE FROM holdings WHERE user_id = $1`, [auth.userId])
+        holdingsDeleted += result.rowCount ?? 0
+      } else if (source === 'trading212') {
+        const result = await db.query(
+          `DELETE FROM holdings WHERE user_id = $1 AND LOWER(COALESCE(notes,'')) LIKE '%trading212%'`,
+          [auth.userId]
+        )
+        holdingsDeleted += result.rowCount ?? 0
+      } else if (source === 'investengine') {
+        const result = await db.query(
+          `DELETE FROM holdings WHERE user_id = $1 AND LOWER(COALESCE(notes,'')) LIKE '%investengine%'`,
+          [auth.userId]
+        )
+        holdingsDeleted += result.rowCount ?? 0
+      }
+    }
+
+    if (sources.includes('all')) {
+      const result = await db.query(`DELETE FROM snapshots WHERE user_id = $1`, [auth.userId])
+      snapshotsDeleted += result.rowCount ?? 0
+    }
+
+    return res.status(200).json({
+      ok: true,
+      deleted: { holdings: holdingsDeleted, snapshots: snapshotsDeleted },
+    })
+  } catch (e) {
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })
+  }
+}
