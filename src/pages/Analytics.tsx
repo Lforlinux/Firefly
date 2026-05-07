@@ -292,7 +292,9 @@ export function Analytics() {
 
             {/* Priya */}
             {(() => {
-              const total = ajbellAmount
+              const autoAjbell = isa?.byOwner['Priya']?.['ajbell'] ?? 0
+              const total = autoAjbell > 0 ? autoAjbell : ajbellAmount
+              const isAuto = autoAjbell > 0
               const remaining = Math.max(0, ISA_LIMIT - total)
               const usedPct = Math.min(100, (total / ISA_LIMIT) * 100)
               return (
@@ -316,19 +318,23 @@ export function Analytics() {
                   </div>
                   <div className="mt-2 flex items-center gap-4 text-xs text-slate-500">
                     <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-pink-500" />AJ Bell</span>
-                    <label className="flex items-center gap-1.5">
-                      <span>Enter deposited:</span>
-                      <span className="text-slate-400">£</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="20000"
-                        value={ajbellInput}
-                        onChange={(e) => setAjbellInput(e.target.value)}
-                        className="w-24 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                        placeholder="0"
-                      />
-                    </label>
+                    {isAuto ? (
+                      <span className="text-slate-400">Auto-synced from AJ Bell CSV</span>
+                    ) : (
+                      <label className="flex items-center gap-1.5">
+                        <span>Enter deposited:</span>
+                        <span className="text-slate-400">£</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="20000"
+                          value={ajbellInput}
+                          onChange={(e) => setAjbellInput(e.target.value)}
+                          className="w-24 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                          placeholder="0"
+                        />
+                      </label>
+                    )}
                   </div>
                 </div>
               )

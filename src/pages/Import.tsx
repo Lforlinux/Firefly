@@ -5,6 +5,7 @@ import { Card, PageHeader, PageBody, Loading } from '@/components/ui'
 import { ImportPreview } from '@/types/import'
 import { previewInvestEngineCSV, commitImport } from '@/services/importService'
 import { formatMoney } from '@/utils/format'
+import { jsonFetch } from '@/services/api'
 
 type ImportStep = 'select-source' | 'configure' | 'preview' | 'confirming' | 'done'
 const OWNERS = ['KLN', 'Priya'] as const
@@ -27,6 +28,25 @@ export function Import() {
     failed: number
     errors: string[]
   } | null>(null)
+
+  // AJ Bell state
+  const [ajbellTxFile, setAjbellTxFile] = useState<File | null>(null)
+  const [ajbellOvFile, setAjbellOvFile] = useState<File | null>(null)
+  const [ajbellResult, setAjbellResult] = useState<{ ok: boolean; synced: number; depositsSynced: number; errors: string[] } | null>(null)
+
+  const ajbellMutation = useMutation({
+    mutationFn: async () => {
+      if (!ajbellTxFile) throw new Error('Transaction CSV is required')
+      const transactionCsv = await ajbellTxFile.text()
+      const overviewCsv = ajbellOvFile ? await ajbellOvFile.text() : undefined
+      return jsonFetch<{ ok: boolean; synced: number; depositsSynced: number; errors: string[] }>('/api/import/ajbell', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionCsv, overviewCsv, owner: 'Priya' }),
+      })
+    },
+    onSuccess: (data) => setAjbellResult(data),
+  })
 
   // Load InvestEngine CSV
   async function handleInvestengineUpload(file: File) {
@@ -107,6 +127,49 @@ export function Import() {
               </div>
             </Card>
 
+            {/* AJ Bell */}
+            <Card tone="elevated" className="p-6">
+              <div className="space-y-3">
+                <h3 className="font-semibold">AJ Bell CSV Sync</h3>
+                <p className="text-sm text-slate-500">Upload transaction history and overview to sync Priya's ISA</p>
+                <div className="space-y-2">
+                  <label className="ff-upload-picker flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded hover:bg-slate-100 cursor-pointer dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800">
+                    <Upload className="h-4 w-4" />
+                    <span className="text-sm">Transaction history CSV</span>
+                    <input type="file" accept=".csv" onChange={(e) => { if (e.target.files?.[0]) setAjbellTxFile(e.target.files[0]) }} className="hidden" />
+                  </label>
+                  {ajbellTxFile && <p className="text-xs text-emerald-600">✓ {ajbellTxFile.name}</p>}
+                  <label className="ff-upload-picker flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded hover:bg-slate-100 cursor-pointer dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800">
+                    <Upload className="h-4 w-4" />
+                    <span className="text-sm">Overview CSV (optional)</span>
+                    <input type="file" accept=".csv" onChange={(e) => { if (e.target.files?.[0]) setAjbellOvFile(e.target.files[0]) }} className="hidden" />
+                  </label>
+                  {ajbellOvFile && <p className="text-xs text-emerald-600">✓ {ajbellOvFile.name}</p>}
+                </div>
+                {ajbellTxFile && (
+                  <button
+                    onClick={() => ajbellMutation.mutate()}
+                    disabled={ajbellMutation.isPending}
+                    className="w-full px-4 py-2 rounded-lg bg-slate-900 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+                  >
+                    {ajbellMutation.isPending ? 'Syncing…' : 'Sync AJ Bell data'}
+                  </button>
+                )}
+                {ajbellResult && (
+                  <div className={`rounded p-3 text-xs ${ajbellResult.ok ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' : 'bg-rose-50 text-rose-800 dark:bg-rose-950 dark:text-rose-200'}`}>
+                    {ajbellResult.ok
+                      ? `✓ ${ajbellResult.synced} holdings synced · ${ajbellResult.depositsSynced} ISA deposits recorded`
+                      : 'Sync failed'}
+                    {ajbellResult.errors.length > 0 && <div className="mt-1">{ajbellResult.errors.join(', ')}</div>}
+                  </div>
+                )}
+                {ajbellMutation.isError && (
+                  <div className="rounded bg-rose-50 p-3 text-xs text-rose-800 dark:bg-rose-950 dark:text-rose-200">
+                    {(ajbellMutation.error as Error).message}
+                  </div>
+                )}
+              </div>
+            </Card>
           </div>
         </PageBody>
       </>

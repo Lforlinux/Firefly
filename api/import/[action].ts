@@ -541,6 +541,157 @@ async function handleInvestEngineSync(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// AJ Bell CSV sync
+// ---------------------------------------------------------------------------
+const AJBELL_DESC_TO_TICKER: Array<[RegExp, string]> = [
+  [/spdr msci|all country world/i, 'ACWI.L'],
+]
+
+function ajbellDescToTicker(description: string): string | null {
+  for (const [pattern, ticker] of AJBELL_DESC_TO_TICKER) {
+    if (pattern.test(description)) return ticker
+  }
+  return null
+}
+
+function parseQuotedCsvLine(line: string): string[] {
+  const result: string[] = []
+  let inQuote = false
+  let current = ''
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') { inQuote = !inQuote }
+    else if (line[i] === ',' && !inQuote) { result.push(current.trim()); current = '' }
+    else { current += line[i] }
+  }
+  result.push(current.trim())
+  return result
+}
+
+type AjBellTx = { date: string; type: string; description: string; quantity: number; price: number; amount: number; reference: string }
+
+function parseAjBellTransactionCsv(csvText: string): AjBellTx[] {
+  const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean)
+  if (lines.length < 2) return []
+  return lines.slice(1).flatMap(line => {
+    const cols = parseQuotedCsvLine(line)
+    if (cols.length < 6) return []
+    const [dateStr, txType, description, quantityStr, priceStr, amountStr, reference = ''] = cols
+    const parts = dateStr.split('/')
+    if (parts.length !== 3) return []
+    const date = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
+    const quantity = parseFloat(quantityStr)
+    const amount = parseFloat(amountStr.replace(/[£,]/g, ''))
+    const priceRaw = parseFloat(priceStr.replace(/[£,]/g, ''))
+    if (!Number.isFinite(quantity) || !Number.isFinite(amount)) return []
+    return [{ date, type: txType, description, quantity, price: Number.isFinite(priceRaw) ? priceRaw : amount / quantity, amount, reference }]
+  })
+}
+
+function parseAjBellOverviewCsv(csvText: string): { cash: number } | null {
+  const lines = csvText.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('"Account"'))
+  for (const line of lines) {
+    const cols = parseQuotedCsvLine(line)
+    if (cols.length < 2) continue
+    const cash = parseFloat(cols[1])
+    if (Number.isFinite(cash)) return { cash }
+  }
+  return null
+}
+
+async function handleAjBellSync(req: VercelRequest, res: VercelResponse) {
+  const auth = requireAuth(req)
+  if (!auth) return res.status(401).json({ error: 'Unauthorized' })
+
+  const { transactionCsv, overviewCsv, owner = 'Priya' } = req.body || {}
+  if (typeof transactionCsv !== 'string' || !transactionCsv.trim()) {
+    return res.status(400).json({ error: 'transactionCsv (string) is required' })
+  }
+
+  try {
+    const db = await getDbClient()
+    const allTx = parseAjBellTransactionCsv(transactionCsv)
+    const purchases = allTx.filter(t => t.type === 'Purchase')
+    const errors: string[] = []
+
+    // Aggregate by ticker
+    const byTicker: Record<string, { totalShares: number; totalCost: number; name: string }> = {}
+    for (const p of purchases) {
+      const ticker = ajbellDescToTicker(p.description)
+      if (!ticker) { errors.push(`Unknown ticker for: ${p.description}`); continue }
+      if (!byTicker[ticker]) byTicker[ticker] = { totalShares: 0, totalCost: 0, name: p.description }
+      byTicker[ticker].totalShares += p.quantity
+      byTicker[ticker].totalCost += p.amount
+    }
+
+    let synced = 0
+    for (const [ticker, { totalShares, totalCost, name }] of Object.entries(byTicker)) {
+      try {
+        const avgCost = totalShares > 0 ? totalCost / totalShares : 0
+        const notes = `Owner: ${owner} | Imported from ajbell`
+        const existing = await db.query(`SELECT id FROM holdings WHERE user_id = $1 AND ticker = $2 LIMIT 1`, [auth.userId, ticker])
+        if (existing.rows?.[0]?.id) {
+          await db.query(
+            `UPDATE holdings SET shares=$3, avg_cost=$4, name=$5, type='etf', currency='GBP', notes=$6, updated_at=NOW() WHERE user_id=$1 AND id=$2`,
+            [auth.userId, existing.rows[0].id, totalShares, avgCost, name, notes]
+          )
+        } else {
+          await db.query(
+            `INSERT INTO holdings (user_id, ticker, name, type, shares, avg_cost, currency, notes) VALUES ($1,$2,$3,'etf',$4,$5,'GBP',$6)`,
+            [auth.userId, ticker, name, totalShares, avgCost, notes]
+          )
+        }
+        synced++
+      } catch (e) {
+        errors.push(`${ticker}: ${e instanceof Error ? e.message : 'error'}`)
+      }
+    }
+
+    // Upsert cash from overview CSV
+    if (typeof overviewCsv === 'string' && overviewCsv.trim()) {
+      const overview = parseAjBellOverviewCsv(overviewCsv)
+      if (overview) {
+        try {
+          const cashNotes = `Owner: ${owner} | Imported from ajbell`
+          const existingCash = await db.query(`SELECT id FROM holdings WHERE user_id = $1 AND ticker = 'CASH:AJBELL' LIMIT 1`, [auth.userId])
+          if (existingCash.rows?.[0]?.id) {
+            await db.query(
+              `UPDATE holdings SET shares=1, avg_cost=$3, name='AJ Bell Cash', type='cash', currency='GBP', notes=$4, updated_at=NOW() WHERE user_id=$1 AND id=$2`,
+              [auth.userId, existingCash.rows[0].id, overview.cash, cashNotes]
+            )
+          } else {
+            await db.query(
+              `INSERT INTO holdings (user_id, ticker, name, type, shares, avg_cost, currency, notes) VALUES ($1,'CASH:AJBELL','AJ Bell Cash','cash',1,$2,'GBP',$3)`,
+              [auth.userId, overview.cash, cashNotes]
+            )
+          }
+          synced++
+        } catch (e) {
+          errors.push(`CASH:AJBELL: ${e instanceof Error ? e.message : 'error'}`)
+        }
+      }
+    }
+
+    // Store each purchase as an isa_deposit (idempotent by reference/source_id)
+    let depositsSynced = 0
+    for (const p of purchases) {
+      if (!ajbellDescToTicker(p.description)) continue
+      const sourceId = p.reference ? `ajbell-${p.reference}` : `ajbell-${p.date}-${p.amount}`
+      const exists = await db.query(`SELECT 1 FROM isa_deposits WHERE user_id = $1 AND source_id = $2 LIMIT 1`, [auth.userId, sourceId])
+      if (exists.rows.length > 0) continue
+      await db.query(
+        `INSERT INTO isa_deposits (user_id, owner, source, amount, deposit_date, notes, source_id) VALUES ($1,$2,'ajbell',$3,$4,$5,$6)`,
+        [auth.userId, owner, p.amount, p.date, `${p.description} (${p.quantity} shares)`, sourceId]
+      )
+      depositsSynced++
+    }
+
+    return res.status(200).json({ ok: true, synced, depositsSynced, errors, source: 'ajbell' })
+  } catch (e) {
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })
+  }
+}
+
 async function handleT212Deposits(req: VercelRequest, res: VercelResponse) {
   const auth = requireAuth(req)
   if (!auth) return res.status(401).json({ error: 'Unauthorized' })
@@ -586,5 +737,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (action === 't212-sync') return handleT212Sync(req, res)
   if (action === 'investengine') return handleInvestEngineSync(req, res)
   if (action === 't212-deposits') return handleT212Deposits(req, res)
+  if (action === 'ajbell') return handleAjBellSync(req, res)
   return res.status(404).json({ error: 'Unknown import action' })
 }
