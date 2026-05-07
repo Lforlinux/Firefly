@@ -14,7 +14,15 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
 
   try {
     const db = await getDbClient()
-    const [holdings, snapshots, transactions, settingsRow, prices, fxRates] = await Promise.all([
+    // UK financial year boundaries
+    const now = new Date()
+    const y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate()
+    const fyStartYear = (m > 4 || (m === 4 && d >= 6)) ? y : y - 1
+    const fyStart = `${fyStartYear}-04-06`
+    const fyEnd = `${fyStartYear + 1}-04-05`
+    const fyLabel = `${fyStartYear}/${String(fyStartYear + 1).slice(2)}`
+
+    const [holdings, snapshots, transactions, settingsRow, prices, fxRates, isaDeposits, isaIe] = await Promise.all([
       db.query(
         `SELECT id, ticker, name, type, sector, shares, avg_cost, currency, notes, created_at, updated_at
          FROM holdings WHERE user_id = $1 ORDER BY created_at DESC`,
@@ -40,6 +48,26 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
       ),
       db.query(`SELECT ticker, price, currency, as_of, prev_close, prev_close_as_of FROM price_cache`),
       db.query(`SELECT pair, rate, as_of FROM fx_cache`),
+      db.query(
+        `SELECT owner, source, SUM(amount) AS total FROM isa_deposits
+         WHERE user_id = $1 AND deposit_date >= $2 AND deposit_date <= $3
+         GROUP BY owner, source`,
+        [auth.userId, fyStart, fyEnd]
+      ).catch(() => ({ rows: [] })),
+      db.query(
+        `SELECT
+           CASE WHEN notes ILIKE '%Owner: KLN%' THEN 'KLN'
+                WHEN notes ILIKE '%Owner: Priya%' THEN 'Priya'
+                ELSE 'KLN' END AS owner,
+           SUM(shares * price) AS total
+         FROM transactions
+         WHERE user_id = $1
+           AND notes ILIKE '%InvestEngine ISA%'
+           AND transaction_date >= $2 AND transaction_date <= $3
+           AND transaction_type = 'buy'
+         GROUP BY owner`,
+        [auth.userId, fyStart, fyEnd]
+      ).catch(() => ({ rows: [] })),
     ])
 
     const pricesMap: Record<string, { price: number; currency: string; asOf: string; prevClose?: number; prevCloseAsOf?: string }> = {}
@@ -103,6 +131,18 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
       notes: t.notes == null ? '' : String(t.notes),
     }))
 
+    const isaByOwner: Record<string, Record<string, number>> = {}
+    for (const row of (isaDeposits.rows || [])) {
+      const o = String(row.owner)
+      if (!isaByOwner[o]) isaByOwner[o] = {}
+      isaByOwner[o][String(row.source)] = Number(row.total)
+    }
+    for (const row of (isaIe.rows || [])) {
+      const o = String(row.owner)
+      if (!isaByOwner[o]) isaByOwner[o] = {}
+      isaByOwner[o]['investengine'] = Number(row.total)
+    }
+
     return res.status(200).json({
       holdings: normalizedHoldings,
       snapshots: normalizedSnapshots,
@@ -111,6 +151,7 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
       prices: pricesMap,
       fxRates: fxMap,
       lastRefresh,
+      isa: { fy: { start: fyStart, end: fyEnd, label: fyLabel }, byOwner: isaByOwner },
     })
   } catch (e) {
     return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })

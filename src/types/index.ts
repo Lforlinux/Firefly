@@ -60,12 +60,18 @@ export interface PriceCache {
   lastRefresh: string
 }
 
+export interface IsaSummary {
+  fy: { start: string; end: string; label: string }
+  byOwner: Record<string, Record<string, number>>
+}
+
 /** Shape returned by GET /api/portfolio — data.json + data.cache.json merged. */
 export interface Portfolio extends PriceCache {
   holdings: Holding[]
   snapshots: Snapshot[]
   transactions: Transaction[]
   settings: Settings
+  isa?: IsaSummary
 }
 
 /** UI-derived: a holding plus its computed price/value/G&L in base currency. */

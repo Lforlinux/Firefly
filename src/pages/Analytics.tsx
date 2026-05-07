@@ -6,15 +6,9 @@ import { buildPortfolio } from '@/utils/calculations'
 import { loadLiabilities, totalLiabilitiesBase } from '@/utils/liabilities'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
 import { formatMoney } from '@/utils/format'
-import { jsonFetch } from '@/services/api'
 
 type GoalItem = { id: string; title: string; targetAmount: number }
 type FirePlanner = { monthlyExpense: number; fireMultiple: number; monthlyContribution: number; annualReturnPct: number }
-
-type IsaData = {
-  fy: { start: string; end: string; label: string }
-  byOwner: Record<string, Record<string, number>>
-}
 
 const ISA_LIMIT = 20_000
 const ISA_AJBELL_KEY = 'firefly.isa.priya.ajbell'
@@ -55,19 +49,16 @@ function readFirePlanner(): FirePlanner {
 export function Analytics() {
   const { data, isLoading, error } = usePortfolio()
   const { selectedOwner } = useUi()
-  const [isa, setIsa] = useState<IsaData | null>(null)
   const [ajbellInput, setAjbellInput] = useState(() => {
     try { return String(JSON.parse(localStorage.getItem(ISA_AJBELL_KEY) || '0') || '') } catch { return '' }
   })
-
-  useEffect(() => {
-    jsonFetch<IsaData>('/api/isa').then(setIsa).catch(() => {})
-  }, [])
 
   const ajbellAmount = Math.max(0, Number(ajbellInput) || 0)
   useEffect(() => {
     localStorage.setItem(ISA_AJBELL_KEY, JSON.stringify(ajbellAmount))
   }, [ajbellAmount])
+
+  const isa = data?.isa ?? null
 
   const view = useMemo(() => {
     if (!data) return null
