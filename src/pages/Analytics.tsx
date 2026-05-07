@@ -1,14 +1,23 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, ArrowRight, Gauge, Target, TrendingUp } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Gauge, PiggyBank, Target, TrendingUp } from 'lucide-react'
 import { usePortfolio, useUi } from '@/context/AppContext'
 import { buildPortfolio } from '@/utils/calculations'
 import { loadLiabilities, totalLiabilitiesBase } from '@/utils/liabilities'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
 import { formatMoney } from '@/utils/format'
+import { jsonFetch } from '@/services/api'
 
 type GoalItem = { id: string; title: string; targetAmount: number }
 type FirePlanner = { monthlyExpense: number; fireMultiple: number; monthlyContribution: number; annualReturnPct: number }
+
+type IsaData = {
+  fy: { start: string; end: string; label: string }
+  byOwner: Record<string, Record<string, number>>
+}
+
+const ISA_LIMIT = 20_000
+const ISA_AJBELL_KEY = 'firefly.isa.priya.ajbell'
 
 function formatInrCompact(value: number): string {
   const abs = Math.abs(value)
@@ -46,6 +55,19 @@ function readFirePlanner(): FirePlanner {
 export function Analytics() {
   const { data, isLoading, error } = usePortfolio()
   const { selectedOwner } = useUi()
+  const [isa, setIsa] = useState<IsaData | null>(null)
+  const [ajbellInput, setAjbellInput] = useState(() => {
+    try { return String(JSON.parse(localStorage.getItem(ISA_AJBELL_KEY) || '0') || '') } catch { return '' }
+  })
+
+  useEffect(() => {
+    jsonFetch<IsaData>('/api/isa').then(setIsa).catch(() => {})
+  }, [])
+
+  const ajbellAmount = Math.max(0, Number(ajbellInput) || 0)
+  useEffect(() => {
+    localStorage.setItem(ISA_AJBELL_KEY, JSON.stringify(ajbellAmount))
+  }, [ajbellAmount])
 
   const view = useMemo(() => {
     if (!data) return null
@@ -219,6 +241,109 @@ export function Analytics() {
             </div>
           </Card>
         </div>
+        {/* ISA Allowance Tracker */}
+        <Card tone="elevated">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">ISA allowance tracker</h3>
+              <p className="mt-0.5 text-xs text-slate-500">
+                FY {isa?.fy.label ?? '—'} · £{ISA_LIMIT.toLocaleString()} limit per person
+              </p>
+            </div>
+            <PiggyBank className="h-4 w-4 text-slate-400" />
+          </div>
+
+          <div className="mt-5 space-y-6">
+            {/* KLN */}
+            {(() => {
+              const kln = isa?.byOwner['KLN'] ?? {}
+              const t212 = kln['t212'] ?? 0
+              const ie = kln['investengine'] ?? 0
+              const total = t212 + ie
+              const remaining = Math.max(0, ISA_LIMIT - total)
+              const t212Pct = (t212 / ISA_LIMIT) * 100
+              const iePct = (ie / ISA_LIMIT) * 100
+              const remPct = (remaining / ISA_LIMIT) * 100
+              return (
+                <div>
+                  <div className="mb-2 flex items-baseline justify-between">
+                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200">KLN</span>
+                    <span className="text-xs text-slate-500">
+                      <span className="font-semibold text-slate-800 dark:text-slate-100">£{total.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
+                      {' '}/ £{ISA_LIMIT.toLocaleString()} used · <span className="text-emerald-600 dark:text-emerald-400">£{remaining.toLocaleString('en-GB', { maximumFractionDigits: 0 })} left</span>
+                    </span>
+                  </div>
+                  <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                    <div
+                      className="flex h-full items-center justify-center bg-cyan-500 text-[10px] font-semibold text-white"
+                      style={{ width: `${t212Pct}%` }}
+                      title={`T212: £${t212.toFixed(0)}`}
+                    >
+                      {t212Pct > 6 ? 'T212' : ''}
+                    </div>
+                    <div
+                      className="flex h-full items-center justify-center bg-violet-500 text-[10px] font-semibold text-white"
+                      style={{ width: `${iePct}%` }}
+                      title={`InvestEngine: £${ie.toFixed(0)}`}
+                    >
+                      {iePct > 6 ? 'IE' : ''}
+                    </div>
+                    <div className="flex-1 bg-slate-100 dark:bg-slate-800" style={{ width: `${remPct}%` }} />
+                  </div>
+                  <div className="mt-2 flex gap-4 text-xs text-slate-500">
+                    <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-cyan-500" />T212 £{t212.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
+                    <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-violet-500" />InvestEngine £{ie.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
+                    <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-slate-300 dark:bg-slate-600" />Remaining £{remaining.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Priya */}
+            {(() => {
+              const total = ajbellAmount
+              const remaining = Math.max(0, ISA_LIMIT - total)
+              const usedPct = Math.min(100, (total / ISA_LIMIT) * 100)
+              return (
+                <div>
+                  <div className="mb-2 flex items-baseline justify-between">
+                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Priya</span>
+                    <span className="text-xs text-slate-500">
+                      <span className="font-semibold text-slate-800 dark:text-slate-100">£{total.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
+                      {' '}/ £{ISA_LIMIT.toLocaleString()} used · <span className="text-emerald-600 dark:text-emerald-400">£{remaining.toLocaleString('en-GB', { maximumFractionDigits: 0 })} left</span>
+                    </span>
+                  </div>
+                  <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                    <div
+                      className="flex h-full items-center justify-center bg-pink-500 text-[10px] font-semibold text-white"
+                      style={{ width: `${usedPct}%` }}
+                      title={`AJBell: £${total.toFixed(0)}`}
+                    >
+                      {usedPct > 6 ? 'AJ Bell' : ''}
+                    </div>
+                    <div className="flex-1 bg-slate-100 dark:bg-slate-800" />
+                  </div>
+                  <div className="mt-2 flex items-center gap-4 text-xs text-slate-500">
+                    <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-pink-500" />AJ Bell</span>
+                    <label className="flex items-center gap-1.5">
+                      <span>Enter deposited:</span>
+                      <span className="text-slate-400">£</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20000"
+                        value={ajbellInput}
+                        onChange={(e) => setAjbellInput(e.target.value)}
+                        className="w-24 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        placeholder="0"
+                      />
+                    </label>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+        </Card>
       </PageBody>
     </>
   )

@@ -106,3 +106,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_fx_cache_pair ON fx_cache(pair);
 -- Daily movement: store previous trading day's closing price
 ALTER TABLE price_cache ADD COLUMN IF NOT EXISTS prev_close DECIMAL(15, 4);
 ALTER TABLE price_cache ADD COLUMN IF NOT EXISTS prev_close_as_of TIMESTAMPTZ;
+
+-- ISA deposit tracking (T212, AJBell, manual)
+CREATE TABLE IF NOT EXISTS isa_deposits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  owner TEXT NOT NULL,
+  source TEXT NOT NULL,
+  amount DECIMAL(15, 2) NOT NULL,
+  deposit_date DATE NOT NULL,
+  notes TEXT,
+  source_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_isa_deposits_source_id ON isa_deposits(user_id, source_id) WHERE source_id IS NOT NULL;

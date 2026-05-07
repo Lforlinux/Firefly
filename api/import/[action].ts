@@ -541,6 +541,48 @@ async function handleInvestEngineSync(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+async function handleT212Deposits(req: VercelRequest, res: VercelResponse) {
+  const auth = requireAuth(req)
+  if (!auth) return res.status(401).json({ error: 'Unauthorized' })
+
+  const { deposits, owner = 'KLN' } = req.body || {}
+  if (!Array.isArray(deposits) || deposits.length === 0) {
+    return res.status(400).json({ error: 'deposits[] is required' })
+  }
+
+  try {
+    const db = await getDbClient()
+    await db.query(`ALTER TABLE isa_deposits ADD COLUMN IF NOT EXISTS source_id TEXT`)
+    await db.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_isa_deposits_source_id
+      ON isa_deposits(user_id, source_id) WHERE source_id IS NOT NULL
+    `)
+
+    let synced = 0
+    const errors: string[] = []
+    for (const d of deposits) {
+      try {
+        const amount = Number(d.amount)
+        if (!Number.isFinite(amount) || amount <= 0) continue
+        const date = String(d.date || '').slice(0, 10)
+        if (!date) continue
+        const sourceId = `t212-deposit-${date}-${amount}`
+        await db.query(`
+          INSERT INTO isa_deposits (user_id, owner, source, amount, deposit_date, notes, source_id)
+          VALUES ($1, $2, 't212', $3, $4, $5, $6)
+          ON CONFLICT (user_id, source_id) DO NOTHING
+        `, [auth.userId, owner, amount, date, d.notes || null, sourceId])
+        synced++
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : 'row error')
+      }
+    }
+    return res.status(200).json({ ok: true, synced, errors })
+  } catch (e) {
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -549,5 +591,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (action === 'trading212') return handleTrading212(req, res)
   if (action === 't212-sync') return handleT212Sync(req, res)
   if (action === 'investengine') return handleInvestEngineSync(req, res)
+  if (action === 't212-deposits') return handleT212Deposits(req, res)
   return res.status(404).json({ error: 'Unknown import action' })
 }
