@@ -92,12 +92,11 @@ export function AppLayout() {
         ].join(' ')
 
   return (
-    <div className={[
-      'min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100',
+    <div className={
       visualStyle === 'premium3d'
-        ? 'bg-[radial-gradient(circle_at_10%_10%,rgba(79,70,229,0.30),transparent_32%),radial-gradient(circle_at_90%_15%,rgba(37,99,235,0.24),transparent_28%),radial-gradient(circle_at_55%_70%,rgba(99,102,241,0.22),transparent_36%),linear-gradient(180deg,#050816_0%,#0b1028_45%,#060a1a_100%)] text-indigo-50'
-        : '',
-    ].join(' ')}>
+        ? 'min-h-screen text-indigo-50 bg-[radial-gradient(circle_at_10%_10%,rgba(79,70,229,0.30),transparent_32%),radial-gradient(circle_at_90%_15%,rgba(37,99,235,0.24),transparent_28%),radial-gradient(circle_at_55%_70%,rgba(99,102,241,0.22),transparent_36%),linear-gradient(180deg,#050816_0%,#0b1028_45%,#060a1a_100%)]'
+        : 'min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100'
+    }>
       {visualStyle === 'premium3d' && (
         <>
           <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
@@ -116,12 +115,11 @@ export function AppLayout() {
         </>
       )}
       <div className="mx-auto flex max-w-screen-2xl">
-        <aside className={[
-          'sticky top-0 hidden h-screen w-72 border-r border-slate-200/80 bg-white/85 p-4 backdrop-blur dark:border-slate-800/90 dark:bg-slate-950/85 lg:flex lg:flex-col',
+        <aside className={
           visualStyle === 'premium3d'
-            ? '!border-indigo-400/30 !bg-indigo-950/75 text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(15,23,42,0.55)]'
-            : '',
-        ].join(' ')}>
+            ? 'sticky top-0 hidden h-screen w-72 border-r p-4 backdrop-blur lg:flex lg:flex-col border-indigo-400/30 bg-indigo-950/75 text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(15,23,42,0.55)]'
+            : 'sticky top-0 hidden h-screen w-72 border-r border-slate-200/80 bg-white/85 p-4 backdrop-blur dark:border-slate-800/90 dark:bg-slate-950/85 lg:flex lg:flex-col'
+        }>
           <div className="flex items-center gap-2 px-2">
             <Flame className="h-5 w-5 text-amber-500" />
             <span className={`text-sm font-semibold tracking-tight ${visualStyle === 'premium3d' ? 'text-cyan-100' : ''}`}>Firefly</span>
@@ -206,10 +204,11 @@ export function AppLayout() {
         </main>
       </div>
 
-      <nav className={[
-        'fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/95 px-2 py-1 backdrop-blur dark:border-slate-800/90 dark:bg-slate-950/95 lg:hidden',
-        visualStyle === 'premium3d' ? 'border-indigo-400/30 bg-indigo-950/80' : '',
-      ].join(' ')}>
+      <nav className={
+        visualStyle === 'premium3d'
+          ? 'fixed inset-x-0 bottom-0 z-40 border-t px-2 py-1 backdrop-blur lg:hidden border-indigo-400/30 bg-indigo-950/90 safe-area-pb'
+          : 'fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/95 px-2 py-1 backdrop-blur dark:border-slate-800/90 dark:bg-slate-950/95 lg:hidden safe-area-pb'
+      }>
         <div className="flex items-end gap-1">
           {MOBILE_NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={mobileNavClass}>
