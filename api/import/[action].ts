@@ -552,32 +552,26 @@ async function handleT212Deposits(req: VercelRequest, res: VercelResponse) {
 
   try {
     const db = await getDbClient()
-    await db.query(`ALTER TABLE isa_deposits ADD COLUMN IF NOT EXISTS source_id TEXT`)
-    await db.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_isa_deposits_source_id
-      ON isa_deposits(user_id, source_id) WHERE source_id IS NOT NULL
-    `)
-
     let synced = 0
-    const errors: string[] = []
     for (const d of deposits) {
-      try {
-        const amount = Number(d.amount)
-        if (!Number.isFinite(amount) || amount <= 0) continue
-        const date = String(d.date || '').slice(0, 10)
-        if (!date) continue
-        const sourceId = `t212-deposit-${date}-${amount}`
-        await db.query(`
-          INSERT INTO isa_deposits (user_id, owner, source, amount, deposit_date, notes, source_id)
-          VALUES ($1, $2, 't212', $3, $4, $5, $6)
-          ON CONFLICT (user_id, source_id) DO NOTHING
-        `, [auth.userId, owner, amount, date, d.notes || null, sourceId])
-        synced++
-      } catch (e) {
-        errors.push(e instanceof Error ? e.message : 'row error')
-      }
+      const amount = Number(d.amount)
+      if (!Number.isFinite(amount) || amount <= 0) continue
+      const date = String(d.date || '').slice(0, 10)
+      if (!date) continue
+      const sourceId = `t212-deposit-${date}-${amount}`
+      const exists = await db.query(
+        `SELECT 1 FROM isa_deposits WHERE user_id = $1 AND source_id = $2 LIMIT 1`,
+        [auth.userId, sourceId]
+      )
+      if (exists.rows.length > 0) continue
+      await db.query(
+        `INSERT INTO isa_deposits (user_id, owner, source, amount, deposit_date, notes, source_id)
+         VALUES ($1, $2, 't212', $3, $4, $5, $6)`,
+        [auth.userId, owner, amount, date, d.notes || null, sourceId]
+      )
+      synced++
     }
-    return res.status(200).json({ ok: true, synced, errors })
+    return res.status(200).json({ ok: true, synced })
   } catch (e) {
     return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })
   }
