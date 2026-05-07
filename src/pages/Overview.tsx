@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
-import { AlertCircle, CalendarClock, Flame, ShieldCheck, Wallet } from 'lucide-react'
+import { AlertCircle, CalendarClock, Flame, ShieldCheck, TrendingUp } from 'lucide-react'
 import { usePortfolio, usePostSnapshot, useUi } from '@/context/AppContext'
-import { buildPortfolio, byType, topN } from '@/utils/calculations'
+import { buildPortfolio, byType, topN, convertToBase } from '@/utils/calculations'
 import { formatMoney, formatPercent, formatRelative } from '@/utils/format'
 import { Card, EmptyState, GainLossBadge, KpiCard, Loading, PageBody, PageHeader } from '@/components/ui'
 import { loadLiabilities, totalLiabilitiesBase } from '@/utils/liabilities'
@@ -50,6 +50,25 @@ export function Overview() {
         : null
     const liabilitiesTotal = totalLiabilitiesBase(loadLiabilities(), base)
     const netWorth = built.totalValueBase - liabilitiesTotal
+
+    // Today's movement: Σ((currentPrice - prevClose) × shares × fx), non-cash only
+    let dailyMovement: number | null = null
+    let prevCloseAsOf: string | null = null
+    {
+      let currentVal = 0
+      let prevVal = 0
+      let hasPrev = false
+      for (const h of filtered.filter((h) => h.type !== 'cash')) {
+        const quote = data.prices?.[h.ticker]
+        if (!quote?.prevClose) continue
+        hasPrev = true
+        const fx = convertToBase(1, quote.currency, data.fxRates, base) ?? 1
+        currentVal += h.shares * quote.price * fx
+        prevVal += h.shares * quote.prevClose * fx
+        if (!prevCloseAsOf || quote.prevCloseAsOf! > prevCloseAsOf) prevCloseAsOf = quote.prevCloseAsOf ?? null
+      }
+      if (hasPrev) dailyMovement = currentVal - prevVal
+    }
     const monthKey = new Date().toISOString().slice(0, 7)
     const monthSnapshots = [...(data.snapshots || [])]
       .filter((s) => s.date.startsWith(monthKey))
@@ -103,6 +122,8 @@ export function Overview() {
       monthStartSnapshot,
       monthDelta,
       monthGrowthSteps,
+      dailyMovement,
+      prevCloseAsOf,
     }
   }, [data, selectedOwner])
 
@@ -140,8 +161,9 @@ export function Overview() {
     monthStartSnapshot,
     monthDelta,
     monthGrowthSteps,
-    liabilitiesTotal,
     netWorth,
+    dailyMovement,
+    prevCloseAsOf,
   } = view
   const investedValue = totalValueBase - cashValueBase
   const is3d = visualStyle === 'premium3d'
@@ -192,10 +214,11 @@ export function Overview() {
             sub={livePriceCount === 0 ? '—' : formatPercent(totalGainLossPct)}
           />
           <KpiCard
-            label="Liabilities"
-            value={money(liabilitiesTotal)}
-            sub={liabilitiesTotal > 0 ? 'Included in net worth' : 'Add liabilities to complete net worth'}
-            icon={<Wallet className="h-4 w-4 text-slate-400" />}
+            label="Today's movement"
+            value={dailyMovement == null ? '—' : money(dailyMovement)}
+            tone={dailyMovement == null ? 'neutral' : dailyMovement >= 0 ? 'gain' : 'loss'}
+            sub={prevCloseAsOf ? `vs close ${new Date(prevCloseAsOf).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Refresh again tomorrow to see'}
+            icon={<TrendingUp className="h-4 w-4 text-slate-400" />}
           />
           <KpiCard
             label="GBP → INR"

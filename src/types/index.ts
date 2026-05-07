@@ -39,6 +39,8 @@ export interface PriceQuote {
   price: number
   currency: CurrencyCode
   asOf: string // ISO timestamp
+  prevClose?: number
+  prevCloseAsOf?: string
 }
 
 export interface FxRate {

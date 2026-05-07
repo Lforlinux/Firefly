@@ -157,12 +157,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }))
     }
 
+    // Fetch existing prices before updating so we can roll prev_close on a new trading day
+    const today = new Date().toISOString().slice(0, 10)
+    const existingRes = await db.query(
+      `SELECT ticker, price, as_of, prev_close, prev_close_as_of FROM price_cache`
+    )
+    const existingByTicker = new Map<string, {
+      price: number; asOf: string
+      prevClose: number | null; prevCloseAsOf: string | null
+    }>()
+    for (const row of existingRes.rows || []) {
+      existingByTicker.set(row.ticker, {
+        price: Number(row.price),
+        asOf: row.as_of,
+        prevClose: row.prev_close != null ? Number(row.prev_close) : null,
+        prevCloseAsOf: row.prev_close_as_of || null,
+      })
+    }
+
     // Write prices to DB (delete-then-insert avoids ON CONFLICT constraint issues)
+    // Roll prev_close when this is the first refresh of a new calendar day (UTC)
     for (const [ticker, q] of Object.entries(pricesMap)) {
+      const existing = existingByTicker.get(ticker)
+      let prevClose: number | null = null
+      let prevCloseAsOf: string | null = null
+
+      if (existing?.asOf) {
+        const existingDate = new Date(existing.asOf).toISOString().slice(0, 10)
+        if (existingDate < today) {
+          // First refresh of a new day — yesterday's price becomes prev_close
+          prevClose = existing.price
+          prevCloseAsOf = existing.asOf
+        } else {
+          // Same-day refresh — carry forward existing prev_close
+          prevClose = existing.prevClose
+          prevCloseAsOf = existing.prevCloseAsOf
+        }
+      }
+
       await db.query(`DELETE FROM price_cache WHERE ticker = $1`, [ticker])
       await db.query(
-        `INSERT INTO price_cache (ticker, price, currency, as_of, updated_at) VALUES ($1,$2,$3,$4,NOW())`,
-        [ticker, q.price, q.currency, q.asOf]
+        `INSERT INTO price_cache (ticker, price, currency, as_of, updated_at, prev_close, prev_close_as_of)
+         VALUES ($1,$2,$3,$4,NOW(),$5,$6)`,
+        [ticker, q.price, q.currency, q.asOf, prevClose, prevCloseAsOf]
       )
     }
 

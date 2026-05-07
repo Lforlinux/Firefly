@@ -102,3 +102,7 @@ ALTER TABLE fx_cache ADD COLUMN IF NOT EXISTS as_of TIMESTAMPTZ;
 UPDATE fx_cache SET as_of = last_updated WHERE as_of IS NULL;
 ALTER TABLE fx_cache ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fx_cache_pair ON fx_cache(pair);
+
+-- Daily movement: store previous trading day's closing price
+ALTER TABLE price_cache ADD COLUMN IF NOT EXISTS prev_close DECIMAL(15, 4);
+ALTER TABLE price_cache ADD COLUMN IF NOT EXISTS prev_close_as_of TIMESTAMPTZ;

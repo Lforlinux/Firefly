@@ -38,16 +38,18 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
          FROM settings WHERE user_id = $1 LIMIT 1`,
         [auth.userId]
       ),
-      db.query(`SELECT ticker, price, currency, as_of FROM price_cache`),
+      db.query(`SELECT ticker, price, currency, as_of, prev_close, prev_close_as_of FROM price_cache`),
       db.query(`SELECT pair, rate, as_of FROM fx_cache`),
     ])
 
-    const pricesMap: Record<string, { price: number; currency: string; asOf: string }> = {}
+    const pricesMap: Record<string, { price: number; currency: string; asOf: string; prevClose?: number; prevCloseAsOf?: string }> = {}
     for (const p of prices.rows || []) {
       pricesMap[p.ticker] = {
         price: Number(p.price),
         currency: String(p.currency || ''),
         asOf: new Date(p.as_of).toISOString(),
+        ...(p.prev_close != null && { prevClose: Number(p.prev_close) }),
+        ...(p.prev_close_as_of && { prevCloseAsOf: new Date(p.prev_close_as_of).toISOString() }),
       }
     }
     const fxMap: Record<string, { rate: number; asOf: string }> = {}
