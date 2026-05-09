@@ -39,8 +39,19 @@ export function deriveNetWorthHistory(
   const built = buildPortfolio(filteredHoldings, data.prices, data.fxRates, base)
   const currentNetWorth = built.totalValueBase - liabilitiesBase
 
+  // Only keep transactions that carry real position/contribution data.
+  // Rows with zero shares×price (e.g. bad imports) would create fake start dates
+  // and a misleading diagonal from £0 to today's value.
   const filteredTx = (data.transactions || [])
     .filter((tx) => ownerMatches(tx.notes, selectedOwner))
+    .filter((tx) => {
+      const side = String(tx.side || '').toLowerCase()
+      const shares = Number(tx.shares) || 0
+      const price = Number(tx.price) || 0
+      if (side === 'buy' || side === 'sell') return shares > 0 && price > 0
+      if (side === 'split') return shares > 0
+      return true // fee / dividend are always meaningful
+    })
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date))
 
@@ -80,9 +91,12 @@ export function deriveNetWorthHistory(
   let contributions = 0
 
   const today = new Date().toISOString().slice(0, 10)
+  // Snapshots are posted from the "all" view and represent the combined portfolio.
+  // Including their dates in a per-owner chart adds spurious data points valued at £0
+  // (no per-person tx on those dates), so only include them for the "all" view.
   const allDates = [...new Set([
     ...txByDate.keys(),
-    ...snapshotByDate.keys(),
+    ...(selectedOwner === 'all' ? snapshotByDate.keys() : []),
     today,
   ])].sort()
 
