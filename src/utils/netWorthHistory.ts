@@ -128,7 +128,12 @@ export function deriveNetWorthHistory(
       }
     }
 
-    const estimatedNetWorth = txDrivenInvestedValueBase + staticInvestedValueBase + currentCashValueBase - liabilitiesBase
+    // Static holdings (no transaction records) and current cash are only meaningful
+    // for today's value — adding them to historical dates would inflate past net worth
+    // using today's prices/balances, which makes history look wrong.
+    const estimatedNetWorth = txDrivenInvestedValueBase
+      + (date === today ? staticInvestedValueBase + currentCashValueBase : 0)
+      - liabilitiesBase
     const snapshotNetWorth = snapshotByDate.has(date) ? snapshotByDate.get(date) || 0 : null
     return {
       date,

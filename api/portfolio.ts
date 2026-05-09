@@ -34,7 +34,11 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
         [auth.userId]
       ),
       db.query(
-        `SELECT t.id, t.holding_id, h.ticker, t.transaction_type, t.shares, t.price, t.currency, t.transaction_date, t.notes, t.created_at
+        `SELECT t.id, t.holding_id, h.ticker, t.transaction_type, t.shares, t.price, t.currency, t.transaction_date,
+                -- Fall back to holding notes for owner attribution when the transaction has no owner tag
+                CASE WHEN t.notes ILIKE '%Owner:%' THEN t.notes
+                     ELSE COALESCE(h.notes, t.notes) END AS notes,
+                t.created_at
          FROM transactions t
          LEFT JOIN holdings h ON h.id = t.holding_id
          WHERE t.user_id = $1
