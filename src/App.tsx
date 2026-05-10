@@ -14,6 +14,7 @@ import { Import } from '@/pages/Import'
 import { Settings } from '@/pages/Settings'
 import { NetWorthProgress } from '@/pages/NetWorthProgress'
 import { Analytics } from '@/pages/Analytics'
+import { DailyMovement } from '@/pages/DailyMovement'
 import { SignupForm } from '@/components/SignupForm'
 import { LoginForm } from '@/components/LoginForm'
 
@@ -82,6 +83,7 @@ function ProtectedRoutes() {
         <Route path="/essentials" element={<Essentials />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/networth-progress" element={<NetWorthProgress />} />
+        <Route path="/daily-movement" element={<DailyMovement />} />
         <Route path="/import" element={<Import />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/holdings" element={<Navigate to="/assets" replace />} />

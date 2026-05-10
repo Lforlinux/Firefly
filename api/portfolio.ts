@@ -22,7 +22,7 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
     const fyEnd = `${fyStartYear + 1}-04-05`
     const fyLabel = `${fyStartYear}/${String(fyStartYear + 1).slice(2)}`
 
-    const [holdings, snapshots, transactions, settingsRow, prices, fxRates, isaDeposits, isaIe] = await Promise.all([
+    const [holdings, snapshots, transactions, settingsRow, prices, fxRates, isaDeposits, isaIe, movementsRes] = await Promise.all([
       db.query(
         `SELECT id, ticker, name, type, sector, shares, avg_cost, currency, notes, created_at, updated_at
          FROM holdings WHERE user_id = $1 ORDER BY created_at DESC`,
@@ -71,6 +71,14 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
            AND transaction_type = 'buy'
          GROUP BY owner`,
         [auth.userId, fyStart, fyEnd]
+      ).catch(() => ({ rows: [] })),
+      db.query(
+        `SELECT movement_date AS date, owner, movement_gbp, portfolio_value_gbp
+         FROM daily_movements
+         WHERE user_id = $1
+         ORDER BY movement_date DESC
+         LIMIT 90`,
+        [auth.userId]
       ).catch(() => ({ rows: [] })),
     ])
 
@@ -135,6 +143,13 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
       notes: t.notes == null ? '' : String(t.notes),
     }))
 
+    const normalizedMovements = (movementsRes.rows || []).map((m: any) => ({
+      date: new Date(m.date).toISOString().slice(0, 10),
+      owner: String(m.owner || 'all'),
+      movementGBP: Number(m.movement_gbp || 0),
+      portfolioValueGBP: m.portfolio_value_gbp != null ? Number(m.portfolio_value_gbp) : null,
+    }))
+
     const isaByOwner: Record<string, Record<string, number>> = {}
     for (const row of (isaDeposits.rows || [])) {
       const o = String(row.owner)
@@ -156,6 +171,7 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
       fxRates: fxMap,
       lastRefresh,
       isa: { fy: { start: fyStart, end: fyEnd, label: fyLabel }, byOwner: isaByOwner },
+      dailyMovements: normalizedMovements,
     })
   } catch (e) {
     return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })

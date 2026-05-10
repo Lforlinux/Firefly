@@ -155,6 +155,19 @@ export function postSnapshot(date: string, valueGBP: number): Promise<{ ok: true
   })
 }
 
+export function postDailyMovement(
+  date: string,
+  owner: string,
+  movementGBP: number,
+  portfolioValueGBP: number | null,
+): Promise<{ ok: true }> {
+  return jsonFetch('/api/portfolio/snapshots', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resource: 'movement', date, owner, movementGBP, portfolioValueGBP }),
+  })
+}
+
 export function flushHoldings(sources: ('all' | 'trading212' | 'investengine')[]): Promise<{ ok: true; deleted: { holdings: number } }> {
   return jsonFetch('/api/portfolio', {
     method: 'DELETE',

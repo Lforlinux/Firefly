@@ -18,7 +18,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { getPortfolio, savePortfolio, refreshPrices, postSnapshot } from '@/services/api'
+import { getPortfolio, savePortfolio, refreshPrices, postSnapshot, postDailyMovement } from '@/services/api'
 import type { OwnerFilter, Portfolio } from '@/types'
 import { AuthProvider } from './AuthContext'
 
@@ -182,6 +182,16 @@ export function usePostSnapshot() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ date, valueGBP }: { date: string; valueGBP: number }) => postSnapshot(date, valueGBP),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['portfolio'] }) },
+  })
+}
+
+export function usePostDailyMovement() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ date, owner, movementGBP, portfolioValueGBP }: {
+      date: string; owner: string; movementGBP: number; portfolioValueGBP: number | null
+    }) => postDailyMovement(date, owner, movementGBP, portfolioValueGBP),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['portfolio'] }) },
   })
 }

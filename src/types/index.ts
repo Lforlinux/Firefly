@@ -72,6 +72,7 @@ export interface Portfolio extends PriceCache {
   transactions: Transaction[]
   settings: Settings
   isa?: IsaSummary
+  dailyMovements: DailyMovement[]
 }
 
 /** UI-derived: a holding plus its computed price/value/G&L in base currency. */
@@ -94,6 +95,13 @@ export interface HoldingRow extends Holding {
   gainLossPct: number
   /** valueBase as a fraction of total portfolio value (0..1). Filled by the consumer. */
   weight: number
+}
+
+export interface DailyMovement {
+  date: string        // YYYY-MM-DD
+  owner: string       // 'all' | 'KLN' | 'Priya' | ...
+  movementGBP: number
+  portfolioValueGBP: number | null
 }
 
 export type OwnerFilter = 'all' | string

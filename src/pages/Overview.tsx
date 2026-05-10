@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { AlertCircle, CalendarClock, Flame, ShieldCheck, TrendingUp } from 'lucide-react'
-import { usePortfolio, usePostSnapshot, useUi } from '@/context/AppContext'
+import { usePortfolio, usePostSnapshot, usePostDailyMovement, useUi } from '@/context/AppContext'
 import { buildPortfolio, byType, topN, convertToBase } from '@/utils/calculations'
 import { formatMoney, formatPercent, formatRelative } from '@/utils/format'
 import { Card, EmptyState, GainLossBadge, KpiCard, Loading, PageBody, PageHeader } from '@/components/ui'
@@ -28,8 +28,10 @@ const TYPE_COLORS_3D: Record<string, string> = {
 export function Overview() {
   const { data, isLoading, error } = usePortfolio()
   const postSnapshot = usePostSnapshot()
+  const postDailyMovement = usePostDailyMovement()
   const { selectedOwner, privacyMode, visualStyle } = useUi()
   const autoSnapshotKeyRef = useRef('')
+  const autoMovementKeyRef = useRef('')
 
   const view = useMemo(() => {
     if (!data) return null
@@ -140,6 +142,25 @@ export function Overview() {
     postSnapshot.mutate({ date: today, valueGBP: netWorthForAutoSnapshot })
   }, [data, view, selectedOwner, netWorthForAutoSnapshot, postSnapshot])
 
+  // Auto-save today's movement for all owners whenever we have prevClose data
+  useEffect(() => {
+    if (!data || !view || view.dailyMovement == null) return
+    const today = new Date().toISOString().slice(0, 10)
+    const runKey = `${today}|${selectedOwner}|${Math.round(view.dailyMovement)}`
+    if (autoMovementKeyRef.current === runKey) return
+    const alreadySaved = (data.dailyMovements || []).some(
+      (m) => m.date === today && m.owner === selectedOwner
+    )
+    if (alreadySaved) return
+    autoMovementKeyRef.current = runKey
+    postDailyMovement.mutate({
+      date: today,
+      owner: selectedOwner,
+      movementGBP: view.dailyMovement,
+      portfolioValueGBP: view.totalValueBase,
+    })
+  }, [data, view, selectedOwner, postDailyMovement])
+
   if (isLoading) return <Loading label="Loading portfolio…" />
   if (error) return <PageBody><EmptyState title="Couldn't load portfolio" body={(error as Error).message} /></PageBody>
   if (!data || !view) return null
@@ -213,13 +234,15 @@ export function Overview() {
             tone={totalGainLoss === 0 ? 'neutral' : totalGainLoss > 0 ? 'gain' : 'loss'}
             sub={livePriceCount === 0 ? '—' : formatPercent(totalGainLossPct)}
           />
-          <KpiCard
-            label="Today's movement"
-            value={dailyMovement == null ? '—' : money(dailyMovement)}
-            tone={dailyMovement == null ? 'neutral' : dailyMovement >= 0 ? 'gain' : 'loss'}
-            sub={prevCloseAsOf ? `vs close ${new Date(prevCloseAsOf).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Refresh again tomorrow to see'}
-            icon={<TrendingUp className="h-4 w-4 text-slate-400" />}
-          />
+          <Link to="/daily-movement" className="block transition hover:opacity-95">
+            <KpiCard
+              label="Today's movement"
+              value={dailyMovement == null ? '—' : money(dailyMovement)}
+              tone={dailyMovement == null ? 'neutral' : dailyMovement >= 0 ? 'gain' : 'loss'}
+              sub={prevCloseAsOf ? `vs close ${new Date(prevCloseAsOf).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Refresh again tomorrow to see'}
+              icon={<TrendingUp className="h-4 w-4 text-slate-400" />}
+            />
+          </Link>
           <KpiCard
             label="GBP → INR"
             value={gbpToInr == null ? '—' : `₹${gbpToInr.toFixed(2)}`}

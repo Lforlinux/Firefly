@@ -120,3 +120,15 @@ CREATE TABLE IF NOT EXISTS isa_deposits (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_isa_deposits_source_id ON isa_deposits(user_id, source_id) WHERE source_id IS NOT NULL;
+
+-- Daily market movement tracking (one row per user + date + owner)
+CREATE TABLE IF NOT EXISTS daily_movements (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  movement_date DATE NOT NULL,
+  owner TEXT NOT NULL DEFAULT 'all',
+  movement_gbp NUMERIC NOT NULL,
+  portfolio_value_gbp NUMERIC,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, movement_date, owner)
+);
+CREATE INDEX IF NOT EXISTS idx_daily_movements_user_date ON daily_movements(user_id, movement_date DESC);

@@ -108,19 +108,122 @@ async function frankfurterRates(from: string, tos: string[]): Promise<Record<str
 }
 
 // ---------------------------------------------------------------------------
+// Inline FX helper (mirrors calculations.ts convertToBase for server use)
+// ---------------------------------------------------------------------------
+function toBase(amount: number, from: string, fxMap: Record<string, number>, base: string): number {
+  if (!from || from.toUpperCase() === base.toUpperCase()) return amount
+  const rate = fxMap[`${from.toUpperCase()}_${base.toUpperCase()}`]
+  return rate ? amount * rate : amount
+}
+
+function ownerFromNotes(notes: string | null): string | undefined {
+  if (!notes) return undefined
+  const m = notes.match(/Owner:\s*([A-Za-z][A-Za-z0-9 _'-]*)/)
+  return m ? m[1].trim() : undefined
+}
+
+// ---------------------------------------------------------------------------
+// Save daily movements for a user after prices have been refreshed
+// ---------------------------------------------------------------------------
+async function saveDailyMovements(
+  db: Awaited<ReturnType<typeof getDbClient>>,
+  userId: string,
+  base: string,
+  fxMap: Record<string, number>,
+  today: string,
+) {
+  const hRes = await db.query(
+    `SELECT h.ticker, h.shares, h.currency, h.notes
+     FROM holdings h
+     WHERE h.user_id = $1 AND h.type != 'cash' AND h.ticker NOT LIKE 'CASH:%'`,
+    [userId]
+  )
+  const holdings: { ticker: string; shares: number; currency: string; notes: string | null }[] = hRes.rows || []
+  if (holdings.length === 0) return
+
+  const priceRes = await db.query(`SELECT ticker, price, currency, prev_close FROM price_cache`)
+  const priceMap = new Map<string, { price: number; currency: string; prevClose: number | null }>(
+    (priceRes.rows || []).map((r: any) => [
+      String(r.ticker),
+      { price: Number(r.price), currency: String(r.currency), prevClose: r.prev_close != null ? Number(r.prev_close) : null },
+    ])
+  )
+
+  // Determine distinct owners from holdings
+  const owners = new Set<string>(['all'])
+  for (const h of holdings) {
+    const o = ownerFromNotes(h.notes)
+    if (o) owners.add(o)
+  }
+
+  for (const owner of owners) {
+    const filtered = owner === 'all'
+      ? holdings
+      : holdings.filter((h) => ownerFromNotes(h.notes)?.toLowerCase() === owner.toLowerCase())
+
+    let movement = 0
+    let portfolioValue = 0
+    let hasPrev = false
+
+    for (const h of filtered) {
+      const q = priceMap.get(h.ticker)
+      if (!q || q.prevClose == null) continue
+      hasPrev = true
+      const fx = toBase(1, q.currency, fxMap, base)
+      movement += h.shares * (q.price - q.prevClose) * fx
+      portfolioValue += h.shares * q.price * fx
+    }
+
+    if (!hasPrev) continue
+
+    await db.query(
+      `INSERT INTO daily_movements (user_id, movement_date, owner, movement_gbp, portfolio_value_gbp)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (user_id, movement_date, owner)
+       DO UPDATE SET movement_gbp = EXCLUDED.movement_gbp, portfolio_value_gbp = EXCLUDED.portfolio_value_gbp`,
+      [userId, today, owner, movement, portfolioValue]
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-  const auth = requireAuth(req)
-  if (!auth) return res.status(401).json({ error: 'Unauthorized' })
+
+  // Support Vercel cron: Authorization: Bearer <CRON_SECRET>
+  // When called by cron, process all users with holdings.
+  const cronSecret = process.env.CRON_SECRET
+  const isCron = cronSecret && req.headers.authorization === `Bearer ${cronSecret}`
+
+  if (!isCron) {
+    const auth = requireAuth(req)
+    if (!auth) return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  const auth = isCron ? null : requireAuth(req)
 
   try {
     const db = await getDbClient()
-    const settingsRes = await db.query(`SELECT base_currency FROM settings WHERE user_id = $1 LIMIT 1`, [auth.userId])
+
+    // For cron: collect all user IDs that have holdings to process
+    const userIds: string[] = []
+    if (isCron) {
+      const usersRes = await db.query(`SELECT DISTINCT user_id FROM holdings LIMIT 20`)
+      userIds.push(...(usersRes.rows || []).map((r: any) => String(r.user_id)))
+    } else {
+      userIds.push(auth!.userId)
+    }
+
+    if (userIds.length === 0) return res.status(200).json({ ok: true, message: 'No users with holdings' })
+
+    // Refresh prices once (shared price_cache across all users)
+    const primaryUserId = userIds[0]
+    const settingsRes = await db.query(`SELECT base_currency FROM settings WHERE user_id = $1 LIMIT 1`, [primaryUserId])
     const base = String(settingsRes.rows?.[0]?.base_currency || 'GBP').toUpperCase()
 
-    const holdingsRes = await db.query(`SELECT ticker, type, currency FROM holdings WHERE user_id = $1`, [auth.userId])
+    const holdingsRes = await db.query(`SELECT ticker, type, currency FROM holdings WHERE user_id = $1`, [primaryUserId])
     const holdings: { ticker: string; type: string; currency: string }[] = holdingsRes.rows || []
 
     const tickers = [...new Set(
@@ -240,6 +343,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `INSERT INTO fx_cache (pair, from_currency, to_currency, rate, as_of, updated_at) VALUES ($1,$2,$3,$4,$5,NOW())`,
         [pair, fromCcy, toCcy, rate, pAsOf]
       )
+    }
+
+    // Build flat fxMap for movement calculation
+    const fxMapFlat: Record<string, number> = {}
+    for (const [pair, { rate }] of Object.entries(fxRatesMap)) fxMapFlat[pair] = rate
+
+    // Save daily movements for every user
+    for (const uid of userIds) {
+      try {
+        await saveDailyMovements(db, uid, base, fxMapFlat, today)
+      } catch (e) {
+        errors.push({ error: `movements for ${uid}: ${e instanceof Error ? e.message : 'failed'}` } as any)
+      }
     }
 
     const source = t212Key ? 'trading212' : 'stooq'

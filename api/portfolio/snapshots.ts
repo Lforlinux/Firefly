@@ -5,6 +5,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
     return getSnapshots(req, res)
   } else if (req.method === 'POST') {
+    // resource=movement routes to daily_movements upsert
+    if (req.body?.resource === 'movement') return upsertMovement(req, res)
     return createSnapshot(req, res)
   } else if (req.method === 'PUT') {
     return updateSnapshot(req, res)
@@ -12,6 +14,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return deleteSnapshot(req, res)
   }
   return res.status(405).json({ error: 'Method not allowed' })
+}
+
+async function upsertMovement(req: VercelRequest, res: VercelResponse) {
+  try {
+    const user = await requireAuth(req)
+    if (!user) return res.status(401).json({ error: 'Unauthorized' })
+    const { date, owner = 'all', movementGBP, portfolioValueGBP } = req.body
+    if (!date || movementGBP === undefined) {
+      return res.status(400).json({ error: 'date and movementGBP are required' })
+    }
+    const db = await getDbClient()
+    await db.query(
+      `INSERT INTO daily_movements (user_id, movement_date, owner, movement_gbp, portfolio_value_gbp)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (user_id, movement_date, owner)
+       DO UPDATE SET movement_gbp = EXCLUDED.movement_gbp, portfolio_value_gbp = EXCLUDED.portfolio_value_gbp`,
+      [user.userId, date, owner, movementGBP, portfolioValueGBP ?? null]
+    )
+    return res.status(200).json({ ok: true })
+  } catch (err) {
+    console.error('Error saving movement:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
 }
 
 async function getSnapshots(req: VercelRequest, res: VercelResponse) {
