@@ -5,7 +5,7 @@ import { usePortfolio, useUi } from '@/context/AppContext'
 import { buildPortfolio } from '@/utils/calculations'
 import { loadLiabilities, totalLiabilitiesBase } from '@/utils/liabilities'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
-import { formatMoney } from '@/utils/format'
+import { formatMoney, formatMoneyCompact } from '@/utils/format'
 
 type GoalItem = { id: string; title: string; targetAmount: number }
 type FirePlanner = { monthlyExpense: number; fireMultiple: number; monthlyContribution: number; annualReturnPct: number }
@@ -13,13 +13,6 @@ type FirePlanner = { monthlyExpense: number; fireMultiple: number; monthlyContri
 const ISA_LIMIT = 20_000
 const ISA_AJBELL_KEY = 'firefly.isa.priya.ajbell'
 
-function formatInrCompact(value: number): string {
-  const abs = Math.abs(value)
-  if (!Number.isFinite(abs)) return '—'
-  if (abs >= 1e7) return `₹${(value / 1e7).toFixed(2)} Cr`
-  if (abs >= 1e5) return `₹${(value / 1e5).toFixed(2)} Lakh`
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
-}
 
 function readGoals(): GoalItem[] {
   try {
@@ -218,7 +211,7 @@ export function Analytics() {
           <Card tone="elevated">
             <div className="text-xs uppercase tracking-wider text-slate-500">Net worth in INR</div>
             <div className="mt-2 text-xl font-semibold tabular-nums">
-              {view.netWorthInr == null ? '—' : formatInrCompact(view.netWorthInr)}
+              {view.netWorthInr == null ? '—' : formatMoneyCompact(view.netWorthInr, 'INR')}
             </div>
             <div className="mt-1 text-xs text-slate-500">
               {view.gbpToInr == null ? 'Refresh prices to load FX' : `1 GBP = ₹${view.gbpToInr.toFixed(2)}`}

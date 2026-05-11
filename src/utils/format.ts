@@ -8,8 +8,10 @@ function moneyFormatter(currency: CurrencyCode, fractionDigits = 0): Intl.Number
   const key = `${currency}|${fractionDigits}`
   let f = moneyFmtCache.get(key)
   if (!f) {
+    // Use en-IN locale for INR so grouping follows the Indian system (21,48,339 not 2,148,339)
+    const locale = (currency as string).toUpperCase() === 'INR' ? 'en-IN' : 'en-GB'
     try {
-      f = new Intl.NumberFormat('en-GB', {
+      f = new Intl.NumberFormat(locale, {
         style: 'currency',
         currency,
         minimumFractionDigits: fractionDigits,
@@ -17,7 +19,7 @@ function moneyFormatter(currency: CurrencyCode, fractionDigits = 0): Intl.Number
       })
     } catch {
       // Unknown currency code — fall back to plain decimal formatting.
-      f = new Intl.NumberFormat('en-GB', {
+      f = new Intl.NumberFormat(locale, {
         style: 'decimal',
         minimumFractionDigits: fractionDigits,
         maximumFractionDigits: fractionDigits,
@@ -28,16 +30,21 @@ function moneyFormatter(currency: CurrencyCode, fractionDigits = 0): Intl.Number
   return f
 }
 
-/** £12,345 / ₹1,440,637 / $1,234. Whole-number by default. */
+/** £12,345 / ₹21,48,339 / $1,234. Whole-number by default. */
 export function formatMoney(amount: number, currency: CurrencyCode = 'GBP', fractionDigits = 0): string {
   if (!Number.isFinite(amount)) return '—'
   return moneyFormatter(currency, fractionDigits).format(amount)
 }
 
-/** Compact: £12K, £1.2M. Falls back to formatMoney for small values. */
+/** Compact: £12K / £1.2M for GBP; ₹12L / ₹1.2Cr for INR. */
 export function formatMoneyCompact(amount: number, currency: CurrencyCode = 'GBP'): string {
   if (!Number.isFinite(amount)) return '—'
   const abs = Math.abs(amount)
+  if ((currency as string).toUpperCase() === 'INR') {
+    if (abs >= 1_00_00_000) return formatMoney(amount / 1_00_00_000, currency, 1).replace(/\.0(?=\D|$)/, '') + 'Cr'
+    if (abs >= 1_00_000) return formatMoney(amount / 1_00_000, currency, 1).replace(/\.0(?=\D|$)/, '') + 'L'
+    return formatMoney(amount, currency, 0)
+  }
   if (abs >= 1_000_000) return formatMoney(amount / 1_000_000, currency, 1).replace(/\.0(?=\D|$)/, '') + 'M'
   if (abs >= 1_000) return formatMoney(amount / 1_000, currency, 1).replace(/\.0(?=\D|$)/, '') + 'K'
   return formatMoney(amount, currency, 0)
