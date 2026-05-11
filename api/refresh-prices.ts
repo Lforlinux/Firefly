@@ -248,13 +248,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Fallback for tickers not yet priced (InvestEngine ETFs, or when T212 key missing/invalid)
-    // UK (.L) ETFs → Yahoo Finance (works server-side, returns GBp which we convert)
-    // US stocks    → Stooq
+    // UK (.L) ETFs / India NSE (.NS) → Yahoo Finance (supports both, returns correct currency)
+    // US stocks                       → Stooq
     const unpricedTickers = tickers.filter((t) => !pricesMap[t])
     if (unpricedTickers.length > 0) {
       await Promise.all(unpricedTickers.map(async (ticker) => {
-        const isUK = ticker.endsWith('.L')
-        const q = isUK ? await yahooPrice(ticker) : await stooqPrice(ticker)
+        const useYahoo = ticker.endsWith('.L') || ticker.endsWith('.NS')
+        const q = useYahoo ? await yahooPrice(ticker) : await stooqPrice(ticker)
         if ('error' in q) errors.push({ ticker, error: q.error })
         else pricesMap[ticker] = { ...q, asOf }
       }))
