@@ -257,8 +257,8 @@ export function Overview() {
           </Link>
           <KpiCard
             label="Invested"
-            value={money(investedValue)}
-            sub={privacyMode ? hidden : `Cost: ${formatMoney(totalCostBase - cashValueBase, base)}`}
+            value={money(totalCostBase - cashValueBase)}
+            sub={privacyMode ? hidden : `Value: ${formatMoney(investedValue, base)}`}
           />
           <KpiCard
             label="Total G/L"
