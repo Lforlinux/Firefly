@@ -86,7 +86,7 @@ function loadCountry(): CountryFilter {
     const v = localStorage.getItem(COUNTRY_KEY)
     if (v === 'UK' || v === 'India') return v
   } catch { /* ignore */ }
-  return 'all'
+  return 'UK' // Default to UK — India is explicitly opt-in via flag
 }
 
 function loadVisualStyle(): VisualStyle {

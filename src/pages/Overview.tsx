@@ -29,7 +29,7 @@ export function Overview() {
   const { data, isLoading, error } = usePortfolio()
   const postSnapshot = usePostSnapshot()
   const postDailyMovement = usePostDailyMovement()
-  const { selectedOwner, privacyMode, visualStyle, selectedCountry, setSelectedCountry } = useUi()
+  const { selectedOwner, privacyMode, visualStyle, selectedCountry } = useUi()
   const autoSnapshotKeyRef = useRef('')
   const autoMovementKeyRef = useRef('')
 
@@ -193,52 +193,16 @@ export function Overview() {
   const hidden = '•••••'
   const money = (v: number) => (privacyMode ? hidden : formatMoney(v, base))
 
-  const flagBtnClass = (active: boolean) =>
-    is3d
-      ? [
-          'rounded-lg px-2 py-1.5 text-xl leading-none transition-all',
-          active
-            ? 'bg-indigo-800/65 shadow-[0_0_12px_rgba(59,130,246,0.4)] ring-1 ring-indigo-300/40'
-            : 'opacity-50 hover:opacity-90 hover:bg-indigo-900/40',
-        ].join(' ')
-      : [
-          'rounded-lg px-2 py-1.5 text-xl leading-none transition-all',
-          active
-            ? 'bg-slate-900 shadow-sm dark:bg-slate-100 ring-2 ring-slate-400/30'
-            : 'opacity-50 hover:opacity-90 hover:bg-slate-100 dark:hover:bg-slate-800',
-        ].join(' ')
-
-  const countryLabel = selectedCountry === 'UK' ? ' · 🇬🇧 UK only' : selectedCountry === 'India' ? ' · 🇮🇳 India only' : ''
-
   return (
     <>
       <PageHeader
         title="Dashboard"
         subtitle={
           <>
-            {selectedOwner === 'all' ? 'All portfolios' : `${selectedOwner}'s portfolio`}{countryLabel} ·{' '}
+            {selectedOwner === 'all' ? 'All portfolios' : `${selectedOwner}'s portfolio`} ·{' '}
+            {selectedCountry === 'UK' ? '🇬🇧 UK' : '🇮🇳 India'} ·{' '}
             Last refresh: {formatRelative(data.lastRefresh)}
           </>
-        }
-        right={
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setSelectedCountry(selectedCountry === 'UK' ? 'all' : 'UK')}
-              className={flagBtnClass(selectedCountry === 'UK')}
-              title="Show UK holdings only"
-            >
-              🇬🇧
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedCountry(selectedCountry === 'India' ? 'all' : 'India')}
-              className={flagBtnClass(selectedCountry === 'India')}
-              title="Show India holdings only"
-            >
-              🇮🇳
-            </button>
-          </div>
         }
       />
       <PageBody>
