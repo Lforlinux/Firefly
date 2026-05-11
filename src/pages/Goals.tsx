@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Trash2 } from 'lucide-react'
 import { usePortfolio } from '@/context/AppContext'
@@ -14,7 +14,8 @@ interface GoalItem {
   targetAmount: number
 }
 
-const STORAGE_KEY = 'firefly.goals'
+const GOALS_KEY_UK = 'firefly.goals'           // existing UK goals — backward-compatible
+const GOALS_KEY_INDIA = 'firefly.goals.india'  // separate India goals, starts empty
 const FIRE_KEY = 'firefly.firePlanner'
 
 interface FirePlanner {
@@ -24,9 +25,9 @@ interface FirePlanner {
   annualReturnPct: number
 }
 
-function loadGoals(): GoalItem[] {
+function loadGoals(key: string): GoalItem[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(key)
     if (!raw) return []
     const parsed = JSON.parse(raw)
     return Array.isArray(parsed) ? parsed : []
@@ -68,7 +69,13 @@ function estimateYearsToTarget(startingValue: number, target: number, monthlyCon
 export function Goals() {
   const { data, isLoading, error } = usePortfolio()
   const { selectedOwner, visualStyle, selectedCountry } = useUi()
-  const [goals, setGoals] = useState<GoalItem[]>(() => loadGoals())
+  const goalsKey = selectedCountry === 'India' ? GOALS_KEY_INDIA : GOALS_KEY_UK
+  const [goals, setGoals] = useState<GoalItem[]>(() => loadGoals(goalsKey))
+
+  // Reload goals from the correct key whenever the country changes
+  useEffect(() => {
+    setGoals(loadGoals(goalsKey))
+  }, [goalsKey])
   const [firePlanner, setFirePlanner] = useState<FirePlanner>(() => loadFirePlanner())
   const [draft, setDraft] = useState({ title: '', targetAmount: '' })
 
@@ -138,7 +145,7 @@ export function Goals() {
 
   function persist(next: GoalItem[]) {
     setGoals(next)
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+    try { localStorage.setItem(goalsKey, JSON.stringify(next)) } catch { /* ignore */ }
   }
 
   function updateFirePlanner(next: Partial<FirePlanner>) {
