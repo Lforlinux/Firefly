@@ -25,16 +25,19 @@ export function deriveNetWorthHistory(
   data: Portfolio,
   selectedOwner: string,
   liabilitiesBase: number,
+  selectedCountry?: string,
 ): {
   base: string
   currentNetWorth: number
   currentContributions: number
   series: NetWorthHistoryPoint[]
 } {
-  const base = data.settings.baseCurrency || 'GBP'
-  const filteredHoldings = selectedOwner === 'all'
+  const base = selectedCountry === 'India' ? 'INR' : (data.settings.baseCurrency || 'GBP')
+  let filteredHoldings = selectedOwner === 'all'
     ? data.holdings
     : data.holdings.filter((h) => ownerMatches(h.notes, selectedOwner))
+  if (selectedCountry === 'UK') filteredHoldings = filteredHoldings.filter((h) => h.currency !== 'INR')
+  else if (selectedCountry === 'India') filteredHoldings = filteredHoldings.filter((h) => h.currency === 'INR')
 
   const built = buildPortfolio(filteredHoldings, data.prices, data.fxRates, base)
   const currentNetWorth = built.totalValueBase - liabilitiesBase
@@ -44,6 +47,11 @@ export function deriveNetWorthHistory(
   // and a misleading diagonal from £0 to today's value.
   const filteredTx = (data.transactions || [])
     .filter((tx) => ownerMatches(tx.notes, selectedOwner))
+    .filter((tx) => {
+      if (selectedCountry === 'UK') return (tx.currency || '').toUpperCase() !== 'INR'
+      if (selectedCountry === 'India') return (tx.currency || '').toUpperCase() === 'INR'
+      return true
+    })
     .filter((tx) => {
       const side = String(tx.side || '').toLowerCase()
       const shares = Number(tx.shares) || 0

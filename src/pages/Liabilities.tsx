@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { HandCoins, Trash2 } from 'lucide-react'
-import { usePortfolio } from '@/context/AppContext'
+import { usePortfolio, useUi } from '@/context/AppContext'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
 import { formatMoney } from '@/utils/format'
 import { LiabilityItem, loadLiabilities, saveLiabilities } from '@/utils/liabilities'
@@ -8,24 +8,30 @@ import type { CurrencyCode } from '@/types'
 
 export function Liabilities() {
   const { data, isLoading, error } = usePortfolio()
+  const { selectedCountry } = useUi()
   const [items, setItems] = useState<LiabilityItem[]>(() => loadLiabilities())
   const [draft, setDraft] = useState({
     name: '',
     category: 'custom' as LiabilityItem['category'],
     lender: '',
     outstandingBalance: '',
-    currency: 'GBP',
+    currency: selectedCountry === 'India' ? 'INR' : 'GBP',
     notes: '',
   })
 
   const view = useMemo(() => {
     if (!data) return null
-    const base = data.settings.baseCurrency || 'GBP'
-    const total = items
+    const base = selectedCountry === 'India' ? 'INR' : (data.settings.baseCurrency || 'GBP')
+    const visibleItems = selectedCountry === 'India'
+      ? items.filter((i) => i.currency.toUpperCase() === 'INR')
+      : selectedCountry === 'UK'
+        ? items.filter((i) => i.currency.toUpperCase() !== 'INR')
+        : items
+    const total = visibleItems
       .filter((i) => i.currency.toUpperCase() === base.toUpperCase())
       .reduce((a, i) => a + i.outstandingBalance, 0)
-    return { base, total, count: items.length }
-  }, [data, items])
+    return { base, total, count: visibleItems.length, visibleItems }
+  }, [data, items, selectedCountry])
 
   function persist(next: LiabilityItem[]) {
     setItems(next)
@@ -77,7 +83,7 @@ export function Liabilities() {
           </Card>
           <Card tone="elevated">
             <div className="text-xs uppercase tracking-wider text-slate-500">Active items</div>
-            <div className="mt-2 text-2xl font-semibold tabular-nums">{view.count}</div>
+            <div className="mt-2 text-2xl font-semibold tabular-nums">{view.visibleItems.length}</div>
           </Card>
           <Card tone="elevated">
             <div className="text-xs uppercase tracking-wider text-slate-500">Debt health</div>
@@ -108,7 +114,7 @@ export function Liabilities() {
           <input value={draft.notes} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))} placeholder="Notes (optional)" className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-800" />
         </Card>
 
-        {items.length === 0 ? (
+        {view.visibleItems.length === 0 ? (
           <EmptyState title="No liabilities added yet" body="Add mortgages, loans, and cards to get a complete net worth view." />
         ) : (
           <Card tone="elevated" className="!p-0">
@@ -122,7 +128,7 @@ export function Liabilities() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {items.map((item) => (
+                {view.visibleItems.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-2.5">
                       <div className="font-medium">{item.name}</div>

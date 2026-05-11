@@ -18,21 +18,23 @@ const TYPE_COLOR_3D: Record<string, string> = {
 
 export function Allocation() {
   const { data, isLoading, error } = usePortfolio()
-  const { selectedOwner, visualStyle } = useUi()
+  const { selectedOwner, visualStyle, selectedCountry } = useUi()
 
   const view = useMemo(() => {
     if (!data) return null
-    const base = data.settings.baseCurrency || 'GBP'
-    const ownerHoldings = selectedOwner === 'all'
+    const base = selectedCountry === 'India' ? 'INR' : (data.settings.baseCurrency || 'GBP')
+    let ownerHoldings = selectedOwner === 'all'
       ? data.holdings
       : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
+    if (selectedCountry === 'UK') ownerHoldings = ownerHoldings.filter((h) => h.currency !== 'INR')
+    else if (selectedCountry === 'India') ownerHoldings = ownerHoldings.filter((h) => h.currency === 'INR')
     const built = buildPortfolio(ownerHoldings, data.prices, data.fxRates, base)
     return {
       base,
       byTypeRows: byType(built.investedRows),
       bySectorRows: bySector(built.investedRows),
     }
-  }, [data, selectedOwner])
+  }, [data, selectedOwner, selectedCountry])
 
   if (isLoading) return <Loading />
   if (error) return <PageBody><EmptyState title="Couldn't load allocation" body={(error as Error).message} /></PageBody>

@@ -67,21 +67,29 @@ function estimateYearsToTarget(startingValue: number, target: number, monthlyCon
 
 export function Goals() {
   const { data, isLoading, error } = usePortfolio()
-  const { selectedOwner, visualStyle } = useUi()
+  const { selectedOwner, visualStyle, selectedCountry } = useUi()
   const [goals, setGoals] = useState<GoalItem[]>(() => loadGoals())
   const [firePlanner, setFirePlanner] = useState<FirePlanner>(() => loadFirePlanner())
   const [draft, setDraft] = useState({ title: '', targetAmount: '' })
 
-  const base = data?.settings.baseCurrency || 'GBP'
+  const base = selectedCountry === 'India' ? 'INR' : (data?.settings.baseCurrency || 'GBP')
   const currentPortfolioValue = useMemo(() => {
     if (!data) return 0
-    const filtered = selectedOwner === 'all'
+    let filtered = selectedOwner === 'all'
       ? data.holdings
       : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
+    if (selectedCountry === 'UK') filtered = filtered.filter((h) => h.currency !== 'INR')
+    else if (selectedCountry === 'India') filtered = filtered.filter((h) => h.currency === 'INR')
     const built = buildPortfolio(filtered, data.prices, data.fxRates, base)
-    const liabilities = totalLiabilitiesBase(loadLiabilities(), base)
+    const allLiabilities = loadLiabilities()
+    const relevantLiabilities = selectedCountry === 'India'
+      ? allLiabilities.filter((l) => l.currency === 'INR')
+      : selectedCountry === 'UK'
+        ? allLiabilities.filter((l) => l.currency !== 'INR')
+        : allLiabilities
+    const liabilities = totalLiabilitiesBase(relevantLiabilities, base)
     return built.totalValueBase - liabilities
-  }, [data, selectedOwner, base])
+  }, [data, selectedOwner, selectedCountry, base])
 
   const summary = useMemo(() => {
     const totalTarget = goals.reduce((a, g) => a + g.targetAmount, 0)

@@ -8,15 +8,21 @@ import { deriveNetWorthHistory } from '@/utils/netWorthHistory'
 
 export function Snapshots() {
   const { data, isLoading, error } = usePortfolio()
-  const { selectedOwner, visualStyle } = useUi()
+  const { selectedOwner, visualStyle, selectedCountry } = useUi()
 
   const view = useMemo(() => {
     if (!data) return null
-    const base = data.settings.baseCurrency || 'GBP'
-    const liabilitiesTotal = totalLiabilitiesBase(loadLiabilities(), base)
-    const derived = deriveNetWorthHistory(data, selectedOwner, liabilitiesTotal)
+    const base = selectedCountry === 'India' ? 'INR' : (data.settings.baseCurrency || 'GBP')
+    const allLiabilities = loadLiabilities()
+    const relevantLiabilities = selectedCountry === 'India'
+      ? allLiabilities.filter((l) => l.currency === 'INR')
+      : selectedCountry === 'UK'
+        ? allLiabilities.filter((l) => l.currency !== 'INR')
+        : allLiabilities
+    const liabilitiesTotal = totalLiabilitiesBase(relevantLiabilities, base)
+    const derived = deriveNetWorthHistory(data, selectedOwner, liabilitiesTotal, selectedCountry)
     return { base, snapshots: data.snapshots, currentNetWorth: derived.currentNetWorth, series: derived.series }
-  }, [data, selectedOwner])
+  }, [data, selectedOwner, selectedCountry])
 
   if (isLoading) return <Loading />
   if (error) return <PageBody><EmptyState title="Couldn't load wealth timeline" body={(error as Error).message} /></PageBody>

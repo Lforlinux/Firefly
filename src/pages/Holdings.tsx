@@ -42,7 +42,7 @@ function normalizeCashTicker(provider: string): string {
 }
 
 export function Holdings() {
-  const { selectedOwner, privacyMode, visualStyle } = useUi()
+  const { selectedOwner, privacyMode, visualStyle, selectedCountry } = useUi()
   const { data, isLoading, error } = usePortfolio()
   const qc = useQueryClient()
   const manualImport = useMutation({
@@ -74,11 +74,14 @@ export function Holdings() {
 
     if (!holdings || !settings) return null
 
-    const ownerFiltered = selectedOwner === 'all'
+    let ownerFiltered = selectedOwner === 'all'
       ? holdings
       : holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
+    if (selectedCountry === 'UK') ownerFiltered = ownerFiltered.filter((h) => h.currency !== 'INR')
+    else if (selectedCountry === 'India') ownerFiltered = ownerFiltered.filter((h) => h.currency === 'INR')
 
-    const built = buildPortfolio(ownerFiltered, data?.prices || {}, data?.fxRates || {}, settings.baseCurrency || 'GBP')
+    const base = selectedCountry === 'India' ? 'INR' : (settings.baseCurrency || 'GBP')
+    const built = buildPortfolio(ownerFiltered, data?.prices || {}, data?.fxRates || {}, base)
 
     const q = query.trim().toLowerCase()
     let rows = built.rows
@@ -94,8 +97,8 @@ export function Holdings() {
       acc[r.type] = (acc[r.type] || 0) + r.valueBase
       return acc
     }, {})
-    return { rows, base: settings.baseCurrency || 'GBP', built, holdings, categoryTotals }
-  }, [data, selectedOwner, query, sortKey, sortDir, showCash, typeFilter])
+    return { rows, base, built, holdings, categoryTotals }
+  }, [data, selectedOwner, selectedCountry, query, sortKey, sortDir, showCash, typeFilter])
 
   function toggleSort(k: SortKey) {
     if (k === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))

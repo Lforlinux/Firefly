@@ -48,7 +48,7 @@ function readFirePlanner(): FirePlanner {
 
 export function Analytics() {
   const { data, isLoading, error } = usePortfolio()
-  const { selectedOwner } = useUi()
+  const { selectedOwner, selectedCountry } = useUi()
   const [ajbellInput, setAjbellInput] = useState(() => {
     try { return String(JSON.parse(localStorage.getItem(ISA_AJBELL_KEY) || '0') || '') } catch { return '' }
   })
@@ -62,12 +62,20 @@ export function Analytics() {
 
   const view = useMemo(() => {
     if (!data) return null
-    const base = data.settings.baseCurrency || 'GBP'
-    const holdings = selectedOwner === 'all'
+    const base = selectedCountry === 'India' ? 'INR' : (data.settings.baseCurrency || 'GBP')
+    let holdings = selectedOwner === 'all'
       ? data.holdings
       : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
+    if (selectedCountry === 'UK') holdings = holdings.filter((h) => h.currency !== 'INR')
+    else if (selectedCountry === 'India') holdings = holdings.filter((h) => h.currency === 'INR')
     const built = buildPortfolio(holdings, data.prices, data.fxRates, base)
-    const liabilities = totalLiabilitiesBase(loadLiabilities(), base)
+    const allLiabilities = loadLiabilities()
+    const relevantLiabilities = selectedCountry === 'India'
+      ? allLiabilities.filter((l) => l.currency === 'INR')
+      : selectedCountry === 'UK'
+        ? allLiabilities.filter((l) => l.currency !== 'INR')
+        : allLiabilities
+    const liabilities = totalLiabilitiesBase(relevantLiabilities, base)
     const netWorth = built.totalValueBase - liabilities
     const directGbpInr = data.fxRates?.GBP_INR?.rate
     const inverseInrGbp = data.fxRates?.INR_GBP?.rate
@@ -131,7 +139,7 @@ export function Analytics() {
       efficiencyRatio,
       signals,
     }
-  }, [data, selectedOwner])
+  }, [data, selectedOwner, selectedCountry])
 
   if (isLoading) return <Loading />
   if (error) return <PageBody><EmptyState title="Couldn't load analytics" body={(error as Error).message} /></PageBody>
@@ -232,8 +240,8 @@ export function Analytics() {
             </div>
           </Card>
         </div>
-        {/* ISA Allowance Tracker */}
-        <Card tone="elevated">
+        {/* ISA Allowance Tracker — UK only */}
+        {selectedCountry !== 'India' && <Card tone="elevated">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">ISA allowance tracker</h3>
@@ -340,7 +348,7 @@ export function Analytics() {
               )
             })()}
           </div>
-        </Card>
+        </Card>}
       </PageBody>
     </>
   )
