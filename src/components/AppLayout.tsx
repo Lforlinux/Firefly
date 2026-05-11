@@ -23,7 +23,6 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { usePortfolio, useRefreshPrices, useUi } from '@/context/AppContext'
-import type { CountryFilter } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { listOwners } from '@/utils/calculations'
 import { formatRelative } from '@/utils/format'
@@ -43,7 +42,7 @@ const NAV: NavItem[] = [
 const MOBILE_NAV = NAV.slice(0, 5)
 
 export function AppLayout() {
-  const { theme, toggleTheme, visualStyle, privacyMode, togglePrivacyMode, selectedOwner, setSelectedOwner, selectedCountry, setSelectedCountry } = useUi()
+  const { theme, toggleTheme, visualStyle, privacyMode, togglePrivacyMode, selectedOwner, setSelectedOwner } = useUi()
   const { logout } = useAuth()
   const { data: portfolio } = usePortfolio()
   const refresh = useRefreshPrices()
@@ -149,44 +148,9 @@ export function AppLayout() {
             </div>
           </div>
 
-          <div className={[
-            'mt-5 rounded-xl border border-slate-200/80 bg-white/65 p-2 dark:border-slate-800 dark:bg-slate-900/40',
-            visualStyle === 'premium3d'
-              ? 'border-indigo-400/30 bg-gradient-to-br from-indigo-900/55 to-slate-900/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_12px_28px_rgba(15,23,42,0.42)]'
-              : '',
-          ].join(' ')}>
-            <div className={`px-1 pb-2 text-[11px] font-semibold uppercase tracking-wider ${visualStyle === 'premium3d' ? 'text-cyan-200/90' : 'text-slate-500'}`}>Country</div>
-            <div className="flex gap-2">
-              {(['UK', 'India'] as CountryFilter[]).map((c) => {
-                const flag = c === 'UK' ? '🇬🇧' : '🇮🇳'
-                const active = selectedCountry === c
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setSelectedCountry(c as CountryFilter)}
-                    title={`${c} holdings`}
-                    className={[
-                      'flex-1 rounded-lg py-1.5 text-lg leading-none transition-all',
-                      visualStyle === 'premium3d'
-                        ? active
-                          ? 'bg-indigo-700/70 shadow-[0_0_10px_rgba(99,102,241,0.5)] ring-1 ring-indigo-300/40'
-                          : 'opacity-40 hover:opacity-80 hover:bg-indigo-900/40'
-                        : active
-                          ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100'
-                          : 'opacity-40 hover:opacity-80 hover:bg-slate-100 dark:hover:bg-slate-800',
-                    ].join(' ')}
-                  >
-                    {flag}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
           {owners.length > 0 && (
             <div className={[
-              'mt-3 rounded-xl border border-slate-200/80 bg-white/65 p-2 dark:border-slate-800 dark:bg-slate-900/40',
+              'mt-5 rounded-xl border border-slate-200/80 bg-white/65 p-2 dark:border-slate-800 dark:bg-slate-900/40',
               visualStyle === 'premium3d'
                 ? 'border-indigo-400/30 bg-gradient-to-br from-indigo-900/55 to-slate-900/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_12px_28px_rgba(15,23,42,0.42)]'
                 : '',

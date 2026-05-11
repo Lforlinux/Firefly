@@ -29,7 +29,7 @@ export function Overview() {
   const { data, isLoading, error } = usePortfolio()
   const postSnapshot = usePostSnapshot()
   const postDailyMovement = usePostDailyMovement()
-  const { selectedOwner, privacyMode, visualStyle, selectedCountry } = useUi()
+  const { selectedOwner, privacyMode, visualStyle, selectedCountry, setSelectedCountry } = useUi()
   const autoSnapshotKeyRef = useRef('')
   const autoMovementKeyRef = useRef('')
 
@@ -40,7 +40,7 @@ export function Overview() {
       : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
     if (selectedCountry === 'UK') filtered = filtered.filter((h) => h.currency !== 'INR')
     else if (selectedCountry === 'India') filtered = filtered.filter((h) => h.currency === 'INR')
-    const base = data.settings.baseCurrency || 'GBP'
+    const base = selectedCountry === 'India' ? 'INR' : (data.settings.baseCurrency || 'GBP')
     const built = buildPortfolio(filtered, data.prices, data.fxRates, base)
     const allocation = byType(built.investedRows, built.totalValueBase - built.cashValueBase)
     const top = topN(built.investedRows, 5)
@@ -193,6 +193,30 @@ export function Overview() {
   const hidden = '•••••'
   const money = (v: number) => (privacyMode ? hidden : formatMoney(v, base))
 
+  const flagBtn = (country: 'UK' | 'India', flag: string) => {
+    const active = selectedCountry === country
+    return (
+      <button
+        key={country}
+        type="button"
+        onClick={() => setSelectedCountry(country)}
+        title={`${country} holdings`}
+        className={[
+          'rounded-lg px-2 py-1 text-xl leading-none transition-all',
+          is3d
+            ? active
+              ? 'bg-indigo-700/70 ring-1 ring-indigo-300/50 shadow-[0_0_10px_rgba(99,102,241,0.5)]'
+              : 'opacity-35 hover:opacity-75 hover:bg-indigo-900/40'
+            : active
+              ? 'bg-slate-900 shadow-sm dark:bg-slate-100'
+              : 'opacity-35 hover:opacity-75 hover:bg-slate-100 dark:hover:bg-slate-800',
+        ].join(' ')}
+      >
+        {flag}
+      </button>
+    )
+  }
+
   return (
     <>
       <PageHeader
@@ -200,9 +224,14 @@ export function Overview() {
         subtitle={
           <>
             {selectedOwner === 'all' ? 'All portfolios' : `${selectedOwner}'s portfolio`} ·{' '}
-            {selectedCountry === 'UK' ? '🇬🇧 UK' : '🇮🇳 India'} ·{' '}
             Last refresh: {formatRelative(data.lastRefresh)}
           </>
+        }
+        right={
+          <div className="flex items-center gap-1">
+            {flagBtn('UK', '🇬🇧')}
+            {flagBtn('India', '🇮🇳')}
+          </div>
         }
       />
       <PageBody>
