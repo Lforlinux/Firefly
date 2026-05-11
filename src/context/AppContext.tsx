@@ -19,7 +19,7 @@ import {
   type ReactNode,
 } from 'react'
 import { getPortfolio, savePortfolio, refreshPrices, postSnapshot, postDailyMovement } from '@/services/api'
-import type { OwnerFilter, Portfolio } from '@/types'
+import type { CountryFilter, OwnerFilter, Portfolio } from '@/types'
 import { AuthProvider } from './AuthContext'
 
 const queryClient = new QueryClient({
@@ -36,6 +36,7 @@ const THEME_KEY = 'firefly.theme'
 const OWNER_KEY = 'firefly.owner'
 const PRIVACY_KEY = 'firefly.privacy'
 const VISUAL_STYLE_KEY = 'firefly.visualStyle'
+const COUNTRY_KEY = 'firefly.country'
 
 type Theme = 'light' | 'dark'
 type VisualStyle = 'minimal' | 'premium3d'
@@ -49,6 +50,8 @@ interface UiState {
   togglePrivacyMode: () => void
   selectedOwner: OwnerFilter
   setSelectedOwner: (o: OwnerFilter) => void
+  selectedCountry: CountryFilter
+  setSelectedCountry: (c: CountryFilter) => void
 }
 
 const UiContext = createContext<UiState | null>(null)
@@ -78,6 +81,14 @@ function loadPrivacyMode(): boolean {
   }
 }
 
+function loadCountry(): CountryFilter {
+  try {
+    const v = localStorage.getItem(COUNTRY_KEY)
+    if (v === 'UK' || v === 'India') return v
+  } catch { /* ignore */ }
+  return 'all'
+}
+
 function loadVisualStyle(): VisualStyle {
   try {
     const v = localStorage.getItem(VISUAL_STYLE_KEY)
@@ -105,6 +116,7 @@ function UiProvider({ children }: { children: ReactNode }) {
   const [visualStyle, setVisualStyle] = useState<VisualStyle>(() => loadVisualStyle())
   const [privacyMode, setPrivacyMode] = useState<boolean>(() => loadPrivacyMode())
   const [selectedOwner, setSelectedOwnerState] = useState<OwnerFilter>(() => loadOwner())
+  const [selectedCountry, setSelectedCountryState] = useState<CountryFilter>(() => loadCountry())
 
   useEffect(() => {
     applyTheme(theme)
@@ -129,10 +141,14 @@ function UiProvider({ children }: { children: ReactNode }) {
     setSelectedOwnerState(o)
     try { localStorage.setItem(OWNER_KEY, o) } catch { /* ignore */ }
   }, [])
+  const setSelectedCountry = useCallback((c: CountryFilter) => {
+    setSelectedCountryState(c)
+    try { localStorage.setItem(COUNTRY_KEY, c) } catch { /* ignore */ }
+  }, [])
 
   const value = useMemo<UiState>(
-    () => ({ theme, toggleTheme, visualStyle, toggleVisualStyle, privacyMode, togglePrivacyMode, selectedOwner, setSelectedOwner }),
-    [theme, toggleTheme, visualStyle, toggleVisualStyle, privacyMode, togglePrivacyMode, selectedOwner, setSelectedOwner],
+    () => ({ theme, toggleTheme, visualStyle, toggleVisualStyle, privacyMode, togglePrivacyMode, selectedOwner, setSelectedOwner, selectedCountry, setSelectedCountry }),
+    [theme, toggleTheme, visualStyle, toggleVisualStyle, privacyMode, togglePrivacyMode, selectedOwner, setSelectedOwner, selectedCountry, setSelectedCountry],
   )
   return <UiContext.Provider value={value}>{children}</UiContext.Provider>
 }

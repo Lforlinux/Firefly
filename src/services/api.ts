@@ -179,3 +179,19 @@ export function flushHoldings(sources: ('all' | 'trading212' | 'investengine')[]
 export function syncTrading212(): Promise<{ ok: true; synced: number; pricesUpdated: number; errors: string[] }> {
   return jsonFetch('/api/import/t212-sync', { method: 'POST' })
 }
+
+export type KiteHoldingPayload = {
+  tradingsymbol: string
+  quantity: number
+  average_price: number
+  last_price?: number
+  exchange?: string
+}
+
+export function syncKite(positions: KiteHoldingPayload[], owner = 'KLN'): Promise<{ ok: true; synced: number; pricesUpdated: number; errors: string[] }> {
+  return jsonFetch('/api/import/kite-sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ positions, owner }),
+  })
+}

@@ -105,3 +105,4 @@ export interface DailyMovement {
 }
 
 export type OwnerFilter = 'all' | string
+export type CountryFilter = 'all' | 'UK' | 'India'

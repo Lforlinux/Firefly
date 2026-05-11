@@ -692,6 +692,113 @@ async function handleAjBellSync(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Kite (Zerodha) holdings sync
+// ---------------------------------------------------------------------------
+
+type KiteHolding = {
+  tradingsymbol: string
+  exchange?: string
+  quantity?: number
+  average_price?: number
+  last_price?: number
+  close_price?: number
+  isin?: string
+}
+
+const KITE_ETF_PATTERNS = /bees$|etf|nifty|^liquid|^nippon|^sbi.*etf|^hdfc.*etf|^icici.*etf/i
+
+function kiteHoldingType(symbol: string): 'etf' | 'stock' | 'commodity' {
+  if (/^gold/i.test(symbol) && /bees/i.test(symbol)) return 'commodity'
+  if (KITE_ETF_PATTERNS.test(symbol)) return 'etf'
+  return 'stock'
+}
+
+const KITE_SECTOR: Record<string, string> = {
+  ASIANPAINT: 'Consumer Discretionary', AXISBANK: 'Financial', BAJAJFINSV: 'Financial',
+  CIPLA: 'Healthcare', DIVISLAB: 'Healthcare', EXIDEIND: 'Industrials',
+  FEDERALBNK: 'Financial', GOLDBEES: 'Commodity', HCLTECH: 'Technology',
+  HDFCBANK: 'Financial', IDFCFIRSTB: 'Financial', INDUSINDBK: 'Financial',
+  INFY: 'Technology', ITC: 'Consumer Staples', ITCHOTELS: 'Consumer Discretionary',
+  JINDALSTEL: 'Materials', KALYANKJIL: 'Consumer Discretionary', KARURVYSYA: 'Financial',
+  KOTAKBANK: 'Financial', KTKBANK: 'Financial', MANAPPURAM: 'Financial',
+  MUTHOOTCAP: 'Financial', NATCOPHARM: 'Healthcare', PIDILITIND: 'Materials',
+  SOUTHBANK: 'Financial', TCS: 'Technology', TECHM: 'Technology',
+  THANGAMAYL: 'Consumer Discretionary', TITAN: 'Consumer Discretionary',
+  TMCV: 'Industrials', TMPV: 'Consumer Discretionary', WIPRO: 'Technology',
+  ZYDUSLIFE: 'Healthcare',
+}
+
+async function handleKiteSync(req: VercelRequest, res: VercelResponse) {
+  const auth = requireAuth(req)
+  if (!auth) return res.status(401).json({ error: 'Unauthorized' })
+
+  try {
+    const { positions, owner = 'KLN' } = req.body || {}
+    if (!Array.isArray(positions) || positions.length === 0) {
+      return res.status(400).json({ error: 'positions[] (Kite holdings array) is required' })
+    }
+
+    const db = await getDbClient()
+    const errors: string[] = []
+    let synced = 0
+    let pricesUpdated = 0
+
+    for (const pos of positions as KiteHolding[]) {
+      try {
+        const rawSymbol = String(pos.tradingsymbol || '').trim().toUpperCase()
+        if (!rawSymbol) { errors.push('Skipping: missing tradingsymbol'); continue }
+        // Append .NS so Yahoo Finance can fetch live prices (NSE convention)
+        const ticker = rawSymbol.endsWith('.NS') || rawSymbol.endsWith('.BO') ? rawSymbol : `${rawSymbol}.NS`
+
+        const shares = Number(pos.quantity ?? 0)
+        const avgCost = Number(pos.average_price ?? 0)
+        if (!Number.isFinite(shares) || shares <= 0) { errors.push(`${ticker}: invalid quantity`); continue }
+        if (!Number.isFinite(avgCost) || avgCost <= 0) { errors.push(`${ticker}: invalid average_price`); continue }
+
+        const type = kiteHoldingType(rawSymbol)
+        const sector = KITE_SECTOR[rawSymbol] || null
+        const notes = `Owner: ${owner} | Imported from kite`
+
+        const existing = await db.query(
+          `SELECT id FROM holdings WHERE user_id = $1 AND ticker = $2 LIMIT 1`,
+          [auth.userId, ticker]
+        )
+        if (existing.rows?.[0]?.id) {
+          await db.query(
+            `UPDATE holdings SET shares=$3, avg_cost=$4, type=$5, sector=$6, notes=$7, currency='INR', updated_at=NOW()
+             WHERE user_id=$1 AND id=$2`,
+            [auth.userId, existing.rows[0].id, shares, avgCost, type, sector, notes]
+          )
+        } else {
+          await db.query(
+            `INSERT INTO holdings (user_id, ticker, name, type, sector, shares, avg_cost, currency, notes)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'INR',$8)`,
+            [auth.userId, ticker, ticker, type, sector, shares, avgCost, notes]
+          )
+        }
+        synced++
+
+        const lastPrice = Number(pos.last_price)
+        if (Number.isFinite(lastPrice) && lastPrice > 0) {
+          await db.query(`DELETE FROM price_cache WHERE ticker = $1`, [ticker])
+          await db.query(
+            `INSERT INTO price_cache (ticker, price, currency, as_of) VALUES ($1,$2,'INR',NOW())`,
+            [ticker, lastPrice]
+          )
+          pricesUpdated++
+        }
+      } catch (e) {
+        errors.push(`${(pos as KiteHolding).tradingsymbol ?? '?'}: ${e instanceof Error ? e.message : 'error'}`)
+      }
+    }
+
+    return res.status(200).json({ ok: true, synced, pricesUpdated, errors, source: 'kite' })
+  } catch (e) {
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })
+  }
+}
+
 async function handleT212Deposits(req: VercelRequest, res: VercelResponse) {
   const auth = requireAuth(req)
   if (!auth) return res.status(401).json({ error: 'Unauthorized' })
@@ -738,5 +845,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (action === 'investengine') return handleInvestEngineSync(req, res)
   if (action === 't212-deposits') return handleT212Deposits(req, res)
   if (action === 'ajbell') return handleAjBellSync(req, res)
+  if (action === 'kite-sync') return handleKiteSync(req, res)
   return res.status(404).json({ error: 'Unknown import action' })
 }

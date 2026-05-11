@@ -29,15 +29,17 @@ export function Overview() {
   const { data, isLoading, error } = usePortfolio()
   const postSnapshot = usePostSnapshot()
   const postDailyMovement = usePostDailyMovement()
-  const { selectedOwner, privacyMode, visualStyle } = useUi()
+  const { selectedOwner, privacyMode, visualStyle, selectedCountry, setSelectedCountry } = useUi()
   const autoSnapshotKeyRef = useRef('')
   const autoMovementKeyRef = useRef('')
 
   const view = useMemo(() => {
     if (!data) return null
-    const filtered = selectedOwner === 'all'
+    let filtered = selectedOwner === 'all'
       ? data.holdings
       : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
+    if (selectedCountry === 'UK') filtered = filtered.filter((h) => h.currency !== 'INR')
+    else if (selectedCountry === 'India') filtered = filtered.filter((h) => h.currency === 'INR')
     const base = data.settings.baseCurrency || 'GBP'
     const built = buildPortfolio(filtered, data.prices, data.fxRates, base)
     const allocation = byType(built.investedRows, built.totalValueBase - built.cashValueBase)
@@ -127,11 +129,11 @@ export function Overview() {
       dailyMovement,
       prevCloseAsOf,
     }
-  }, [data, selectedOwner])
+  }, [data, selectedOwner, selectedCountry])
 
   const netWorthForAutoSnapshot = view?.netWorth ?? 0
   useEffect(() => {
-    if (!data || !view || selectedOwner !== 'all') return
+    if (!data || !view || selectedOwner !== 'all' || selectedCountry !== 'all') return
     if (netWorthForAutoSnapshot <= 0) return
     const today = new Date().toISOString().slice(0, 10)
     const hasToday = data.snapshots.some((s) => s.date === today)
@@ -191,15 +193,52 @@ export function Overview() {
   const hidden = '•••••'
   const money = (v: number) => (privacyMode ? hidden : formatMoney(v, base))
 
+  const flagBtnClass = (active: boolean) =>
+    is3d
+      ? [
+          'rounded-lg px-2 py-1.5 text-xl leading-none transition-all',
+          active
+            ? 'bg-indigo-800/65 shadow-[0_0_12px_rgba(59,130,246,0.4)] ring-1 ring-indigo-300/40'
+            : 'opacity-50 hover:opacity-90 hover:bg-indigo-900/40',
+        ].join(' ')
+      : [
+          'rounded-lg px-2 py-1.5 text-xl leading-none transition-all',
+          active
+            ? 'bg-slate-900 shadow-sm dark:bg-slate-100 ring-2 ring-slate-400/30'
+            : 'opacity-50 hover:opacity-90 hover:bg-slate-100 dark:hover:bg-slate-800',
+        ].join(' ')
+
+  const countryLabel = selectedCountry === 'UK' ? ' · 🇬🇧 UK only' : selectedCountry === 'India' ? ' · 🇮🇳 India only' : ''
+
   return (
     <>
       <PageHeader
         title="Dashboard"
         subtitle={
           <>
-            {selectedOwner === 'all' ? 'All portfolios' : `${selectedOwner}'s portfolio`} ·{' '}
+            {selectedOwner === 'all' ? 'All portfolios' : `${selectedOwner}'s portfolio`}{countryLabel} ·{' '}
             Last refresh: {formatRelative(data.lastRefresh)}
           </>
+        }
+        right={
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setSelectedCountry(selectedCountry === 'UK' ? 'all' : 'UK')}
+              className={flagBtnClass(selectedCountry === 'UK')}
+              title="Show UK holdings only"
+            >
+              🇬🇧
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedCountry(selectedCountry === 'India' ? 'all' : 'India')}
+              className={flagBtnClass(selectedCountry === 'India')}
+              title="Show India holdings only"
+            >
+              🇮🇳
+            </button>
+          </div>
         }
       />
       <PageBody>
