@@ -41,7 +41,8 @@ function readFirePlanner(): FirePlanner {
 
 export function Analytics() {
   const { data, isLoading, error } = usePortfolio()
-  const { selectedOwner, selectedCountry } = useUi()
+  const { selectedOwner, selectedCountry, visualStyle } = useUi()
+  const is3d = visualStyle === 'premium3d'
   const [ajbellInput, setAjbellInput] = useState(() => {
     try { return String(JSON.parse(localStorage.getItem(ISA_AJBELL_KEY) || '0') || '') } catch { return '' }
   })
@@ -116,6 +117,17 @@ export function Analytics() {
     if (netFlow30d <= 0) signals.push('No positive net contributions in the last 30 days.')
     if (signals.length === 0) signals.push('Portfolio trend looks healthy. Stay consistent and rebalance periodically.')
 
+    // Combined UK + India net worth (always in GBP as base, then converted to INR)
+    // Uses all holdings regardless of country filter — only meaningful from UK view
+    const gbpBase = data.settings.baseCurrency || 'GBP'
+    const allOwnerHoldings = selectedOwner === 'all'
+      ? data.holdings
+      : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
+    const allBuilt = buildPortfolio(allOwnerHoldings, data.prices, data.fxRates, gbpBase)
+    const allLiabilitiesTotal = totalLiabilitiesBase(allLiabilities, gbpBase)
+    const combinedNetWorthGBP = allBuilt.totalValueBase - allLiabilitiesTotal
+    const combinedNetWorthInr = gbpToInr != null ? combinedNetWorthGBP * gbpToInr : null
+
     return {
       base,
       netWorth,
@@ -131,6 +143,8 @@ export function Analytics() {
       netFlow30d,
       efficiencyRatio,
       signals,
+      combinedNetWorthGBP,
+      combinedNetWorthInr,
     }
   }, [data, selectedOwner, selectedCountry])
 
@@ -233,6 +247,47 @@ export function Analytics() {
             </div>
           </Card>
         </div>
+
+        {/* Combined UK + India net worth — only shown in UK view */}
+        {selectedCountry === 'UK' && (
+          <Card tone="elevated" className={is3d ? 'border-indigo-400/30 bg-gradient-to-br from-indigo-900/55 to-slate-900/45' : ''}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className={`text-sm font-semibold ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>
+                  Combined portfolio — 🇬🇧 UK + 🇮🇳 India
+                </h3>
+                <p className={`mt-0.5 text-xs ${is3d ? 'text-cyan-200/75' : 'text-slate-500'}`}>
+                  Total net worth across both countries
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div>
+                <div className={`text-[11px] uppercase tracking-wider ${is3d ? 'text-indigo-200/80' : 'text-slate-500'}`}>In GBP</div>
+                <div className={`mt-1 text-2xl font-semibold tabular-nums ${is3d ? 'text-cyan-100' : ''}`}>
+                  {formatMoney(view.combinedNetWorthGBP, 'GBP')}
+                </div>
+              </div>
+              <div>
+                <div className={`text-[11px] uppercase tracking-wider ${is3d ? 'text-indigo-200/80' : 'text-slate-500'}`}>In INR</div>
+                <div className={`mt-1 text-2xl font-semibold tabular-nums ${is3d ? 'text-cyan-100' : ''}`}>
+                  {view.combinedNetWorthInr == null ? '—' : formatMoney(view.combinedNetWorthInr, 'INR')}
+                </div>
+              </div>
+            </div>
+            {view.gbpToInr != null && (
+              <div className={`mt-3 text-xs ${is3d ? 'text-indigo-200/70' : 'text-slate-400'}`}>
+                FX: 1 GBP = ₹{view.gbpToInr.toFixed(2)} · India holdings converted at live rate
+              </div>
+            )}
+            {view.gbpToInr == null && (
+              <div className={`mt-3 text-xs ${is3d ? 'text-amber-300/70' : 'text-amber-600'}`}>
+                Refresh prices to load FX rate for INR conversion
+              </div>
+            )}
+          </Card>
+        )}
+
         {/* ISA Allowance Tracker — UK only */}
         {selectedCountry !== 'India' && <Card tone="elevated">
           <div className="flex items-center justify-between">
