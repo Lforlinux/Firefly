@@ -73,12 +73,35 @@ export function Overview() {
       }
       if (hasPrev) dailyMovement = currentVal - prevVal
     }
-    // MTD baseline = last snapshot of the PREVIOUS month (e.g. Apr 30 close)
-    const thisMonthStart = new Date().toISOString().slice(0, 8) + '01' // "2026-05-01"
-    const monthStartSnapshot = [...(data.snapshots || [])]
-      .filter((s) => s.date < thisMonthStart)
-      .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null // most-recent before this month
-    const monthStartValue = monthStartSnapshot ? Number(monthStartSnapshot.valueGBP || 0) : null
+    // Total portfolio in GBP (all holdings, no country filter) — for auto-snapshot only
+    const gbpBase = data.settings.baseCurrency || 'GBP'
+    const allOwnerHoldings = selectedOwner === 'all'
+      ? data.holdings
+      : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
+    const totalBuilt = buildPortfolio(allOwnerHoldings, data.prices, data.fxRates, gbpBase)
+    const totalLiabGBP = totalLiabilitiesBase(loadLiabilities(), gbpBase)
+    const totalNetWorthGBP = totalBuilt.totalValueBase - totalLiabGBP
+
+    // MTD: country-specific baseline stored in localStorage on first visit of each month.
+    // UK MTD uses UK-only netWorth (GBP); India MTD uses India-only netWorth (INR).
+    const currentMonthKey = new Date().toISOString().slice(0, 7) // e.g. "2026-05"
+    const mtdKey = `firefly.mtd.${selectedCountry}.${selectedOwner}.${currentMonthKey}`
+    let monthStartSnapshot: { date: string; value: number } | null = null
+    let monthStartValue: number | null = null
+    try {
+      const raw = localStorage.getItem(mtdKey)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        monthStartValue = Number(parsed.value)
+        monthStartSnapshot = parsed
+      } else if (netWorth > 0) {
+        // First visit of this month — capture current value as month-start baseline
+        const entry = { date: new Date().toISOString().slice(0, 10), value: netWorth }
+        localStorage.setItem(mtdKey, JSON.stringify(entry))
+        monthStartValue = netWorth
+        monthStartSnapshot = entry
+      }
+    } catch { /* ignore */ }
     const monthDelta = monthStartValue != null ? netWorth - monthStartValue : null
     const monthGrowthSteps = monthDelta != null && monthDelta > 0 ? Math.floor(monthDelta / 100) : 0
     let essentialsScore = 0
@@ -126,12 +149,13 @@ export function Overview() {
       monthStartSnapshot,
       monthDelta,
       monthGrowthSteps,
+      totalNetWorthGBP,
       dailyMovement,
       prevCloseAsOf,
     }
   }, [data, selectedOwner, selectedCountry])
 
-  const netWorthForAutoSnapshot = view?.netWorth ?? 0
+  const netWorthForAutoSnapshot = view?.totalNetWorthGBP ?? 0
   useEffect(() => {
     // country filter doesn't affect auto-snapshot — always snapshot the full GBP net worth
     if (!data || !view || selectedOwner !== 'all') return
@@ -324,7 +348,7 @@ export function Overview() {
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Month-to-date signal</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Baseline: {monthStartSnapshot ? monthStartSnapshot.date : 'end of last month'}
+                  {selectedCountry === 'India' ? '🇮🇳 India' : '🇬🇧 UK'} portfolio vs {monthStartSnapshot ? monthStartSnapshot.date : 'month start'}
                 </p>
               </div>
               <CalendarClock className="mt-0.5 h-4 w-4 text-slate-400" />
