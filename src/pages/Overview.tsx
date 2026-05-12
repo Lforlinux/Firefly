@@ -82,26 +82,27 @@ export function Overview() {
     const totalLiabGBP = totalLiabilitiesBase(loadLiabilities(), gbpBase)
     const totalNetWorthGBP = totalBuilt.totalValueBase - totalLiabGBP
 
-    // MTD: country-specific baseline stored in localStorage on first visit of each month.
-    // UK MTD uses UK-only netWorth (GBP); India MTD uses India-only netWorth (INR).
-    const currentMonthKey = new Date().toISOString().slice(0, 7) // e.g. "2026-05"
-    const mtdKey = `firefly.mtd.${selectedCountry}.${selectedOwner}.${currentMonthKey}`
+    // MTD baseline = last snapshot before this month.
+    // Each snapshot's notes may contain {"uk_gbp": N, "india_inr": N} for country-specific values.
+    // UK MTD uses uk_gbp (GBP); India MTD uses india_inr (INR).
+    const thisMonthStart = new Date().toISOString().slice(0, 8) + '01'
+    const prevMonthSnap = [...(data.snapshots || [])]
+      .filter((s) => s.date < thisMonthStart)
+      .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null
     let monthStartSnapshot: { date: string; value: number } | null = null
     let monthStartValue: number | null = null
-    try {
-      const raw = localStorage.getItem(mtdKey)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        monthStartValue = Number(parsed.value)
-        monthStartSnapshot = parsed
-      } else if (netWorth > 0) {
-        // First visit of this month — capture current value as month-start baseline
-        const entry = { date: new Date().toISOString().slice(0, 10), value: netWorth }
-        localStorage.setItem(mtdKey, JSON.stringify(entry))
-        monthStartValue = netWorth
-        monthStartSnapshot = entry
-      }
-    } catch { /* ignore */ }
+    if (prevMonthSnap) {
+      let snapValue: number | null = null
+      try {
+        const parsed = JSON.parse(prevMonthSnap.notes || '{}')
+        if (selectedCountry === 'India' && parsed.india_inr) snapValue = Number(parsed.india_inr)
+        else if (selectedCountry === 'UK' && parsed.uk_gbp)  snapValue = Number(parsed.uk_gbp)
+      } catch { /* notes not JSON — fall back to total */ }
+      // Fallback: use total snapshot value (same currency as current view)
+      if (snapValue == null && selectedCountry === 'UK') snapValue = Number(prevMonthSnap.valueGBP || 0)
+      monthStartValue = snapValue
+      monthStartSnapshot = { date: prevMonthSnap.date, value: snapValue ?? 0 }
+    }
     const monthDelta = monthStartValue != null ? netWorth - monthStartValue : null
     const monthGrowthSteps = monthDelta != null && monthDelta > 0 ? Math.floor(monthDelta / 100) : 0
     let essentialsScore = 0

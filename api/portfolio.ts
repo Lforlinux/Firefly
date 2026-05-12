@@ -130,6 +130,7 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
     const normalizedSnapshots = (snapshots.rows || []).map((s: any) => ({
       date: new Date(s.date).toISOString().slice(0, 10),
       valueGBP: Number(s.valueGBP || 0),
+      ...(s.notes ? { notes: String(s.notes) } : {}),
     }))
 
     const normalizedTransactions = (transactions.rows || []).map((t: any) => ({

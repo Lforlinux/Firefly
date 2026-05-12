@@ -20,8 +20,9 @@ export interface Holding {
 }
 
 export interface Snapshot {
-  date: string // YYYY-MM-DD
+  date: string    // YYYY-MM-DD
   valueGBP: number
+  notes?: string  // optional JSON e.g. {"uk_gbp": N, "india_inr": N}
 }
 
 export interface Transaction {
