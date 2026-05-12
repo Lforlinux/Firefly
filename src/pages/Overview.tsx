@@ -73,14 +73,14 @@ export function Overview() {
       }
       if (hasPrev) dailyMovement = currentVal - prevVal
     }
-    const monthKey = new Date().toISOString().slice(0, 7)
-    const monthSnapshots = [...(data.snapshots || [])]
-      .filter((s) => s.date.startsWith(monthKey))
-      .sort((a, b) => a.date.localeCompare(b.date))
-    const monthStartSnapshot = monthSnapshots[0]
-    const monthStartValue = monthStartSnapshot ? Number(monthStartSnapshot.valueGBP || 0) : netWorth
-    const monthDelta = netWorth - monthStartValue
-    const monthGrowthSteps = monthDelta > 0 ? Math.floor(monthDelta / 100) : 0
+    // MTD baseline = last snapshot of the PREVIOUS month (e.g. Apr 30 close)
+    const thisMonthStart = new Date().toISOString().slice(0, 8) + '01' // "2026-05-01"
+    const monthStartSnapshot = [...(data.snapshots || [])]
+      .filter((s) => s.date < thisMonthStart)
+      .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null // most-recent before this month
+    const monthStartValue = monthStartSnapshot ? Number(monthStartSnapshot.valueGBP || 0) : null
+    const monthDelta = monthStartValue != null ? netWorth - monthStartValue : null
+    const monthGrowthSteps = monthDelta != null && monthDelta > 0 ? Math.floor(monthDelta / 100) : 0
     let essentialsScore = 0
     let fireProgress = 0
     let fireYears = 0
@@ -324,19 +324,25 @@ export function Overview() {
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Month-to-date signal</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Baseline: {monthStartSnapshot ? monthStartSnapshot.date : 'today'}
+                  Baseline: {monthStartSnapshot ? monthStartSnapshot.date : 'end of last month'}
                 </p>
               </div>
               <CalendarClock className="mt-0.5 h-4 w-4 text-slate-400" />
             </div>
-            <div className={`mt-4 text-xl font-semibold tabular-nums ${monthDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-              {privacyMode ? hidden : formatMoney(monthDelta, base)}
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              {monthDelta >= 0
-                ? `+£100 milestones hit this month: ${monthGrowthSteps}`
-                : 'Market dip since month start - potential add window.'}
-            </p>
+            {monthDelta == null ? (
+              <div className="mt-4 text-sm text-slate-400">No previous month snapshot yet</div>
+            ) : (
+              <>
+                <div className={`mt-4 text-xl font-semibold tabular-nums ${monthDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                  {privacyMode ? hidden : (monthDelta >= 0 ? '+' : '') + formatMoney(monthDelta, base)}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  {monthDelta >= 0
+                    ? `+£100 milestones hit this month: ${monthGrowthSteps}`
+                    : 'Market dip since last month close — potential add window.'}
+                </p>
+              </>
+            )}
             <Link to="/snapshots" className="mt-3 inline-block text-xs font-medium text-slate-600 underline-offset-2 hover:underline dark:text-slate-300">Open wealth timeline</Link>
           </Card>
         </div>
