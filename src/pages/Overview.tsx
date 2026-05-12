@@ -133,7 +133,8 @@ export function Overview() {
 
   const netWorthForAutoSnapshot = view?.netWorth ?? 0
   useEffect(() => {
-    if (!data || !view || selectedOwner !== 'all' || selectedCountry !== 'all') return
+    // country filter doesn't affect auto-snapshot — always snapshot the full GBP net worth
+    if (!data || !view || selectedOwner !== 'all') return
     if (netWorthForAutoSnapshot <= 0) return
     const today = new Date().toISOString().slice(0, 10)
     const hasToday = data.snapshots.some((s) => s.date === today)
@@ -142,26 +143,29 @@ export function Overview() {
     if (autoSnapshotKeyRef.current === runKey) return
     autoSnapshotKeyRef.current = runKey
     postSnapshot.mutate({ date: today, valueGBP: netWorthForAutoSnapshot })
-  }, [data, view, selectedOwner, netWorthForAutoSnapshot, postSnapshot])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, view, selectedOwner, netWorthForAutoSnapshot])
 
-  // Auto-save today's movement for all owners whenever we have prevClose data
+  // Auto-save today's movement — use ref guard to prevent re-firing on mutation state changes
   useEffect(() => {
     if (!data || !view || view.dailyMovement == null) return
     const today = new Date().toISOString().slice(0, 10)
     const runKey = `${today}|${selectedOwner}|${Math.round(view.dailyMovement)}`
+    // Always set the ref first — prevents repeated calls when alreadySaved or same key
     if (autoMovementKeyRef.current === runKey) return
+    autoMovementKeyRef.current = runKey
     const alreadySaved = (data.dailyMovements || []).some(
       (m) => m.date === today && m.owner === selectedOwner
     )
     if (alreadySaved) return
-    autoMovementKeyRef.current = runKey
     postDailyMovement.mutate({
       date: today,
       owner: selectedOwner,
       movementGBP: view.dailyMovement,
       portfolioValueGBP: view.totalValueBase,
     })
-  }, [data, view, selectedOwner, postDailyMovement])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, view, selectedOwner])
 
   if (isLoading) return <Loading label="Loading portfolio…" />
   if (error) return <PageBody><EmptyState title="Couldn't load portfolio" body={(error as Error).message} /></PageBody>

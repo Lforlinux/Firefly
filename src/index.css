@@ -70,7 +70,8 @@ body {
   background: rgba(129, 140, 248, 0.22);
   filter: blur(24px);
   pointer-events: none;
-  animation: ff-kpi-pulse 4s ease-in-out infinite;
+  will-change: transform, opacity;
+  animation: ff-kpi-pulse 8s ease-in-out infinite;
 }
 
 .ff-3d .ff-card h1,
@@ -323,8 +324,8 @@ body {
 }
 
 @keyframes ff-kpi-pulse {
-  0%, 100% { transform: scale(1); opacity: 0.65; }
-  50% { transform: scale(1.1); opacity: 0.95; }
+  0%, 100% { transform: scale(1);   opacity: 0.55; }
+  50%       { transform: scale(1.08); opacity: 0.80; }
 }
 
 @supports (padding-bottom: env(safe-area-inset-bottom)) {

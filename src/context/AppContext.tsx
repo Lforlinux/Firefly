@@ -25,8 +25,10 @@ import { AuthProvider } from './AuthContext'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60_000,
+      staleTime: 5 * 60_000,   // 5 min — prices only update via nightly cron
+      gcTime:    15 * 60_000,  // keep cache warm for 15 min of inactivity
       refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
       retry: 1,
     },
   },
