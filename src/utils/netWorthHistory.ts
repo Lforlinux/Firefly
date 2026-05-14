@@ -63,19 +63,33 @@ export function deriveNetWorthHistory(
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date))
 
+  // Tickers that have at least one recorded transaction
+  const txTickers = new Set(filteredTx.map((tx) => tx.ticker).filter(Boolean))
+
+  // Holdings with no buy transaction records are excluded from the rolling contributions tally.
+  // Add their cost basis (shares × avgCost × FX) as a fixed baseline so the contributions
+  // figure reflects total capital deployed, not just the subset with transaction history.
+  const staticContributionsBase = filteredHoldings.reduce((sum, h) => {
+    if (txTickers.has(h.ticker)) return sum // covered by transaction history
+    const costNative = (Number(h.shares) || 0) * (Number(h.avgCost) || 0)
+    if (!costNative) return sum
+    const costBase = convertToBase(costNative, h.currency, data.fxRates, base) ?? costNative
+    return sum + costBase
+  }, 0)
+
   if (filteredTx.length === 0) {
     const today = new Date().toISOString().slice(0, 10)
     const snapshotToday = (data.snapshots || []).find((s) => s.date === today)
     return {
       base,
       currentNetWorth,
-      currentContributions: 0,
+      currentContributions: staticContributionsBase,
       series: [{
         date: today,
         estimatedNetWorth: currentNetWorth,
         snapshotNetWorth: snapshotToday ? Number(snapshotToday.valueGBP) || 0 : null,
         netWorth: snapshotToday ? Number(snapshotToday.valueGBP) || currentNetWorth : currentNetWorth,
-        contributions: 0,
+        contributions: staticContributionsBase,
       }],
     }
   }
@@ -90,7 +104,6 @@ export function deriveNetWorthHistory(
   const snapshotByDate = new Map<string, number>()
   for (const s of data.snapshots || []) snapshotByDate.set(s.date, Number(s.valueGBP) || 0)
 
-  const txTickers = new Set(filteredTx.map((tx) => tx.ticker).filter(Boolean))
   const staticRows = built.rows.filter((r) => r.type !== 'cash' && !txTickers.has(r.ticker))
   const staticInvestedValueBase = staticRows.reduce((sum, r) => sum + r.valueBase, 0)
   const currentCashValueBase = built.cashValueBase
@@ -162,7 +175,8 @@ export function deriveNetWorthHistory(
       estimatedNetWorth,
       snapshotNetWorth,
       netWorth: snapshotNetWorth ?? estimatedNetWorth,
-      contributions,
+      // staticContributionsBase is a fixed offset for holdings with no transaction history
+      contributions: contributions + staticContributionsBase,
     }
   })
 
