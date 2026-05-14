@@ -195,3 +195,54 @@ export function syncKite(positions: KiteHoldingPayload[], owner = 'KLN'): Promis
     body: JSON.stringify({ positions, owner }),
   })
 }
+
+// Goals & FIRE planner
+export interface GoalItem {
+  id: string
+  title: string
+  targetAmount: number
+  country: string
+}
+
+export interface FirePlannerData {
+  monthlyExpense: number
+  fireMultiple: number
+  monthlyContribution: number
+  annualReturnPct: number
+}
+
+export function fetchGoals(country: string): Promise<{ goals: GoalItem[]; firePlanner: FirePlannerData | null }> {
+  return jsonFetch(`/api/goals?country=${encodeURIComponent(country)}`)
+}
+
+export function addGoal(title: string, targetAmount: number, country: string): Promise<{ goal: GoalItem }> {
+  return jsonFetch('/api/goals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'goal', title, targetAmount, country }),
+  })
+}
+
+export function importGoals(goals: Array<{ title: string; targetAmount: number }>, country: string): Promise<{ ok: true }> {
+  return jsonFetch('/api/goals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'import', goals, country }),
+  })
+}
+
+export function removeGoal(id: string): Promise<{ ok: true }> {
+  return jsonFetch('/api/goals', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+}
+
+export function saveFirePlanner(planner: FirePlannerData, country: string): Promise<{ ok: true }> {
+  return jsonFetch('/api/goals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'fire', country, ...planner }),
+  })
+}

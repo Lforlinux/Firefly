@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Trash2 } from 'lucide-react'
 import { usePortfolio } from '@/context/AppContext'
@@ -7,51 +8,25 @@ import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui
 import { formatMoney } from '@/utils/format'
 import { buildPortfolio } from '@/utils/calculations'
 import { loadLiabilities, totalLiabilitiesBase } from '@/utils/liabilities'
+import {
+  fetchGoals,
+  addGoal as apiAddGoal,
+  removeGoal as apiRemoveGoal,
+  importGoals,
+  saveFirePlanner,
+  type FirePlannerData,
+} from '@/services/api'
 
-interface GoalItem {
-  id: string
-  title: string
-  targetAmount: number
-}
+const LEGACY_GOALS_KEY_UK = 'firefly.goals'
+const LEGACY_GOALS_KEY_INDIA = 'firefly.goals.india'
+const LEGACY_FIRE_KEY = 'firefly.firePlanner'
+const MIGRATED_KEY = 'firefly.goals.migrated' // set after first-time DB migration
 
-const GOALS_KEY_UK = 'firefly.goals'           // existing UK goals — backward-compatible
-const GOALS_KEY_INDIA = 'firefly.goals.india'  // separate India goals, starts empty
-const FIRE_KEY = 'firefly.firePlanner'
-
-interface FirePlanner {
-  monthlyExpense: number
-  fireMultiple: number
-  monthlyContribution: number
-  annualReturnPct: number
-}
-
-function loadGoals(key: string): GoalItem[] {
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function loadFirePlanner(): FirePlanner {
-  try {
-    const raw = localStorage.getItem(FIRE_KEY)
-    if (!raw) {
-      return { monthlyExpense: 2500, fireMultiple: 30, monthlyContribution: 1000, annualReturnPct: 6 }
-    }
-    const parsed = JSON.parse(raw)
-    return {
-      monthlyExpense: Number(parsed.monthlyExpense || 2500),
-      fireMultiple: Number(parsed.fireMultiple || 30),
-      monthlyContribution: Number(parsed.monthlyContribution || 1000),
-      annualReturnPct: Number(parsed.annualReturnPct || 6),
-    }
-  } catch {
-    return { monthlyExpense: 2500, fireMultiple: 30, monthlyContribution: 1000, annualReturnPct: 6 }
-  }
+const DEFAULT_FIRE: FirePlannerData = {
+  monthlyExpense: 2500,
+  fireMultiple: 30,
+  monthlyContribution: 1000,
+  annualReturnPct: 6,
 }
 
 function estimateYearsToTarget(startingValue: number, target: number, monthlyContribution: number, annualReturnPct: number): number {
@@ -67,18 +42,94 @@ function estimateYearsToTarget(startingValue: number, target: number, monthlyCon
 }
 
 export function Goals() {
-  const { data, isLoading, error } = usePortfolio()
+  const { data, isLoading: portfolioLoading, error: portfolioError } = usePortfolio()
   const { selectedOwner, visualStyle, selectedCountry } = useUi()
-  const goalsKey = selectedCountry === 'India' ? GOALS_KEY_INDIA : GOALS_KEY_UK
-  const [goals, setGoals] = useState<GoalItem[]>(() => loadGoals(goalsKey))
+  const qc = useQueryClient()
+  const country = selectedCountry === 'India' ? 'India' : 'UK'
+  const migratedRef = useRef(false)
 
-  // Reload goals from the correct key whenever the country changes
+  // ── load goals + fire planner from DB ──────────────────────────────────────
+  const { data: goalsData, isLoading: goalsLoading } = useQuery({
+    queryKey: ['goals', country],
+    queryFn: () => fetchGoals(country),
+    staleTime: 5 * 60_000,
+  })
+
+  const goals = goalsData?.goals ?? []
+  const [firePlanner, setFirePlanner] = useState<FirePlannerData>(DEFAULT_FIRE)
+
+  // Sync fire planner from DB (or keep defaults if none saved yet)
   useEffect(() => {
-    setGoals(loadGoals(goalsKey))
-  }, [goalsKey])
-  const [firePlanner, setFirePlanner] = useState<FirePlanner>(() => loadFirePlanner())
+    if (goalsData?.firePlanner) setFirePlanner(goalsData.firePlanner)
+  }, [goalsData?.firePlanner])
+
+  // ── one-time migration from localStorage → DB ──────────────────────────────
+  useEffect(() => {
+    if (migratedRef.current) return
+    if (localStorage.getItem(MIGRATED_KEY)) return
+    if (goalsLoading) return // wait until we know DB state
+    migratedRef.current = true
+
+    const legacyKey = country === 'India' ? LEGACY_GOALS_KEY_INDIA : LEGACY_GOALS_KEY_UK
+    try {
+      const raw = localStorage.getItem(legacyKey)
+      const parsed: Array<{ title: string; targetAmount: number }> = raw ? JSON.parse(raw) : []
+      if (Array.isArray(parsed) && parsed.length > 0 && goals.length === 0) {
+        importGoals(parsed, country).then(() => {
+          qc.invalidateQueries({ queryKey: ['goals', country] })
+        }).catch(() => {/* silently ignore */})
+      }
+    } catch { /* ignore */ }
+
+    // Migrate fire planner
+    try {
+      const fireRaw = localStorage.getItem(LEGACY_FIRE_KEY)
+      if (fireRaw) {
+        const fp = JSON.parse(fireRaw) as Partial<FirePlannerData>
+        if (fp.monthlyExpense || fp.fireMultiple) {
+          const merged = { ...DEFAULT_FIRE, ...fp }
+          saveFirePlanner(merged, country).catch(() => {/* ignore */})
+        }
+      }
+    } catch { /* ignore */ }
+
+    localStorage.setItem(MIGRATED_KEY, '1')
+  }, [goalsLoading, goals.length, country, qc])
+
+  // ── mutations ──────────────────────────────────────────────────────────────
+  const addMutation = useMutation({
+    mutationFn: ({ title, targetAmount }: { title: string; targetAmount: number }) =>
+      apiAddGoal(title, targetAmount, country),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['goals', country] }),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => apiRemoveGoal(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['goals', country] }),
+  })
+
+  const fireMutation = useMutation({
+    mutationFn: (fp: FirePlannerData) => saveFirePlanner(fp, country),
+  })
+
+  function updateFirePlanner(next: Partial<FirePlannerData>) {
+    setFirePlanner((prev) => {
+      const merged = { ...prev, ...next }
+      fireMutation.mutate(merged)
+      return merged
+    })
+  }
+
   const [draft, setDraft] = useState({ title: '', targetAmount: '' })
 
+  function addGoal() {
+    const targetAmount = Number(draft.targetAmount)
+    if (!draft.title.trim() || !Number.isFinite(targetAmount) || targetAmount <= 0) return
+    addMutation.mutate({ title: draft.title.trim(), targetAmount })
+    setDraft({ title: '', targetAmount: '' })
+  }
+
+  // ── portfolio value ────────────────────────────────────────────────────────
   const base = selectedCountry === 'India' ? 'INR' : (data?.settings.baseCurrency || 'GBP')
   const currentPortfolioValue = useMemo(() => {
     if (!data) return 0
@@ -103,20 +154,9 @@ export function Goals() {
     const totalCurrent = goals.length === 0 ? 0 : currentPortfolioValue
     return { totalTarget, totalCurrent }
   }, [goals, currentPortfolioValue])
+
+  // ── FIRE ───────────────────────────────────────────────────────────────────
   const is3d = visualStyle === 'premium3d'
-  const fieldClass = is3d
-    ? 'mt-1 w-full rounded-lg border border-indigo-300/30 bg-indigo-900/45 px-3 py-2 text-sm text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_0_14px_rgba(59,130,246,0.16)] placeholder:text-cyan-200/60'
-    : 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800'
-  const statBoxClass = is3d
-    ? 'rounded-xl border border-indigo-300/30 bg-indigo-900/40 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_24px_rgba(30,41,59,0.35)]'
-    : 'rounded-xl border border-slate-200/90 bg-slate-50/90 p-3 dark:border-slate-700/90 dark:bg-slate-900/85'
-  const addInfoClass = is3d
-    ? 'rounded-lg border border-indigo-300/30 bg-indigo-900/35 px-3 py-2 text-xs text-cyan-100/85'
-    : 'rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
-  const progressTrackClass = is3d ? 'mt-3 h-2 rounded-full bg-indigo-950/70' : 'mt-3 h-2 rounded-full bg-slate-200 dark:bg-slate-800'
-  const progressFillClass = is3d
-    ? 'h-2 rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-fuchsia-400 shadow-[0_0_10px_rgba(56,189,248,0.55)]'
-    : 'h-2 rounded-full bg-slate-900 dark:bg-slate-200'
 
   const fire = useMemo(() => {
     const target = firePlanner.monthlyExpense * 12 * firePlanner.fireMultiple
@@ -143,40 +183,23 @@ export function Goals() {
     return points
   }, [fire.target, currentPortfolioValue, firePlanner.monthlyContribution, firePlanner.annualReturnPct])
 
-  function persist(next: GoalItem[]) {
-    setGoals(next)
-    try { localStorage.setItem(goalsKey, JSON.stringify(next)) } catch { /* ignore */ }
-  }
+  // ── styles ─────────────────────────────────────────────────────────────────
+  const fieldClass = is3d
+    ? 'mt-1 w-full rounded-lg border border-indigo-300/30 bg-indigo-900/45 px-3 py-2 text-sm text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_0_14px_rgba(59,130,246,0.16)] placeholder:text-cyan-200/60'
+    : 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800'
+  const statBoxClass = is3d
+    ? 'rounded-xl border border-indigo-300/30 bg-indigo-900/40 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_24px_rgba(30,41,59,0.35)]'
+    : 'rounded-xl border border-slate-200/90 bg-slate-50/90 p-3 dark:border-slate-700/90 dark:bg-slate-900/85'
+  const addInfoClass = is3d
+    ? 'rounded-lg border border-indigo-300/30 bg-indigo-900/35 px-3 py-2 text-xs text-cyan-100/85'
+    : 'rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+  const progressTrackClass = is3d ? 'mt-3 h-2 rounded-full bg-indigo-950/70' : 'mt-3 h-2 rounded-full bg-slate-200 dark:bg-slate-800'
+  const progressFillClass = is3d
+    ? 'h-2 rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-fuchsia-400 shadow-[0_0_10px_rgba(56,189,248,0.55)]'
+    : 'h-2 rounded-full bg-slate-900 dark:bg-slate-200'
 
-  function updateFirePlanner(next: Partial<FirePlanner>) {
-    setFirePlanner((prev) => {
-      const merged = { ...prev, ...next }
-      try { localStorage.setItem(FIRE_KEY, JSON.stringify(merged)) } catch { /* ignore */ }
-      return merged
-    })
-  }
-
-  function addGoal() {
-    const target = Number(draft.targetAmount)
-    if (!draft.title.trim() || !Number.isFinite(target) || target <= 0) return
-    const next: GoalItem[] = [
-      ...goals,
-      {
-        id: crypto.randomUUID?.() || String(Date.now()),
-        title: draft.title.trim(),
-        targetAmount: target,
-      },
-    ]
-    persist(next)
-    setDraft({ title: '', targetAmount: '' })
-  }
-
-  function removeGoal(id: string) {
-    persist(goals.filter((g) => g.id !== id))
-  }
-
-  if (isLoading) return <Loading />
-  if (error) return <PageBody><EmptyState title="Couldn't load goals" body={(error as Error).message} /></PageBody>
+  if (portfolioLoading || goalsLoading) return <Loading />
+  if (portfolioError) return <PageBody><EmptyState title="Couldn't load goals" body={(portfolioError as Error).message} /></PageBody>
 
   return (
     <>
@@ -299,12 +322,30 @@ export function Goals() {
         <Card tone="elevated">
           <h3 className="text-sm font-semibold">Add goal</h3>
           <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
-            <input value={draft.title} onChange={(e) => setDraft((v) => ({ ...v, title: e.target.value }))} placeholder="Goal name" className={is3d ? 'rounded-lg border border-indigo-300/30 bg-indigo-900/45 px-3 py-2 text-sm text-cyan-100 placeholder:text-cyan-200/60' : 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800'} />
-            <input value={draft.targetAmount} onChange={(e) => setDraft((v) => ({ ...v, targetAmount: e.target.value }))} placeholder="Target amount" type="number" className={is3d ? 'rounded-lg border border-indigo-300/30 bg-indigo-900/45 px-3 py-2 text-sm text-cyan-100 placeholder:text-cyan-200/60' : 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800'} />
-            <div className={addInfoClass}>
-              Current value auto-syncs from portfolio
-            </div>
-            <button type="button" onClick={addGoal} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white dark:bg-slate-100 dark:text-slate-900">Add</button>
+            <input
+              value={draft.title}
+              onChange={(e) => setDraft((v) => ({ ...v, title: e.target.value }))}
+              onKeyDown={(e) => e.key === 'Enter' && addGoal()}
+              placeholder="Goal name"
+              className={is3d ? 'rounded-lg border border-indigo-300/30 bg-indigo-900/45 px-3 py-2 text-sm text-cyan-100 placeholder:text-cyan-200/60' : 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800'}
+            />
+            <input
+              value={draft.targetAmount}
+              onChange={(e) => setDraft((v) => ({ ...v, targetAmount: e.target.value }))}
+              onKeyDown={(e) => e.key === 'Enter' && addGoal()}
+              placeholder="Target amount"
+              type="number"
+              className={is3d ? 'rounded-lg border border-indigo-300/30 bg-indigo-900/45 px-3 py-2 text-sm text-cyan-100 placeholder:text-cyan-200/60' : 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800'}
+            />
+            <div className={addInfoClass}>Current value auto-syncs from portfolio</div>
+            <button
+              type="button"
+              onClick={addGoal}
+              disabled={addMutation.isPending}
+              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+            >
+              {addMutation.isPending ? 'Adding…' : 'Add'}
+            </button>
           </div>
         </Card>
 
@@ -323,8 +364,9 @@ export function Goals() {
                       <div className="text-xs tabular-nums text-slate-500">{progress.toFixed(0)}%</div>
                       <button
                         type="button"
-                        onClick={() => removeGoal(g.id)}
-                        className="rounded p-1 text-slate-400 hover:bg-rose-500/10 hover:text-rose-500"
+                        onClick={() => removeMutation.mutate(g.id)}
+                        disabled={removeMutation.isPending}
+                        className="rounded p-1 text-slate-400 hover:bg-rose-500/10 hover:text-rose-500 disabled:opacity-40"
                         aria-label={`Delete goal ${g.title}`}
                       >
                         <Trash2 className="h-4 w-4" />
