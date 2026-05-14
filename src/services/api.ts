@@ -202,6 +202,7 @@ export interface GoalItem {
   title: string
   targetAmount: number
   country: string
+  includeIndia: boolean
 }
 
 export interface FirePlannerData {
@@ -236,6 +237,14 @@ export function removeGoal(id: string): Promise<{ ok: true }> {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id }),
+  })
+}
+
+export function updateGoal(id: string, patch: { includeIndia?: boolean }): Promise<{ ok: true }> {
+  return jsonFetch('/api/goals', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, ...patch }),
   })
 }
 

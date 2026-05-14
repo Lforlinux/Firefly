@@ -4,6 +4,7 @@ import { requireAuth, getDbClient } from '../lib/vercel-auth.js'
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') return getGoals(req, res)
   if (req.method === 'POST') return postGoals(req, res)
+  if (req.method === 'PATCH') return patchGoal(req, res)
   if (req.method === 'DELETE') return deleteGoal(req, res)
   return res.status(405).json({ error: 'Method not allowed' })
 }
@@ -18,7 +19,7 @@ async function getGoals(req: VercelRequest, res: VercelResponse) {
     const db = await getDbClient()
     const [goalsRes, fireRes] = await Promise.all([
       db.query(
-        `SELECT id, title, target_amount AS "targetAmount", country, created_at
+        `SELECT id, title, target_amount AS "targetAmount", country, include_india AS "includeIndia", created_at
          FROM goals WHERE user_id = $1 AND country = $2
          ORDER BY created_at ASC`,
         [auth.userId, country]
@@ -35,6 +36,7 @@ async function getGoals(req: VercelRequest, res: VercelResponse) {
       title: String(g.title),
       targetAmount: Number(g.targetAmount),
       country: String(g.country),
+      includeIndia: Boolean(g.includeIndia),
     }))
 
     const fp = fireRes.rows[0]
@@ -45,7 +47,7 @@ async function getGoals(req: VercelRequest, res: VercelResponse) {
           monthlyContribution: Number(fp.monthly_contribution),
           annualReturnPct: Number(fp.annual_return_pct),
         }
-      : null // null = use frontend defaults
+      : null
 
     return res.status(200).json({ goals, firePlanner })
   } catch (e) {
@@ -94,8 +96,9 @@ async function postGoals(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'title and targetAmount are required' })
       }
       const inserted = await db.query(
-        `INSERT INTO goals (user_id, title, target_amount, country)
-         VALUES ($1, $2, $3, $4) RETURNING id, title, target_amount AS "targetAmount", country`,
+        `INSERT INTO goals (user_id, title, target_amount, country, include_india)
+         VALUES ($1, $2, $3, $4, FALSE)
+         RETURNING id, title, target_amount AS "targetAmount", country, include_india AS "includeIndia"`,
         [auth.userId, title, targetAmount, country]
       )
       const g = inserted.rows[0]
@@ -105,6 +108,7 @@ async function postGoals(req: VercelRequest, res: VercelResponse) {
           title: String(g.title),
           targetAmount: Number(g.targetAmount),
           country: String(g.country),
+          includeIndia: Boolean(g.includeIndia),
         },
       })
     }
@@ -126,6 +130,32 @@ async function postGoals(req: VercelRequest, res: VercelResponse) {
     }
 
     return res.status(400).json({ error: 'type must be goal | fire | import' })
+  } catch (e) {
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })
+  }
+}
+
+async function patchGoal(req: VercelRequest, res: VercelResponse) {
+  const auth = requireAuth(req)
+  if (!auth) return res.status(401).json({ error: 'Unauthorized' })
+
+  const body = req.body || {}
+  const id = String(body.id || '')
+  if (!id) return res.status(400).json({ error: 'id is required' })
+
+  try {
+    const db = await getDbClient()
+
+    // Toggle include_india
+    if (typeof body.includeIndia === 'boolean') {
+      await db.query(
+        `UPDATE goals SET include_india = $1 WHERE id = $2 AND user_id = $3`,
+        [body.includeIndia, id, auth.userId]
+      )
+      return res.status(200).json({ ok: true })
+    }
+
+    return res.status(400).json({ error: 'No valid fields to update' })
   } catch (e) {
     return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })
   }

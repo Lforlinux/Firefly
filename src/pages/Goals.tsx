@@ -12,6 +12,7 @@ import {
   fetchGoals,
   addGoal as apiAddGoal,
   removeGoal as apiRemoveGoal,
+  updateGoal as apiUpdateGoal,
   importGoals,
   saveFirePlanner,
   type FirePlannerData,
@@ -108,6 +109,12 @@ export function Goals() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['goals', country] }),
   })
 
+  const toggleIndiaMutation = useMutation({
+    mutationFn: ({ id, includeIndia }: { id: string; includeIndia: boolean }) =>
+      apiUpdateGoal(id, { includeIndia }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['goals', country] }),
+  })
+
   const fireMutation = useMutation({
     mutationFn: (fp: FirePlannerData) => saveFirePlanner(fp, country),
   })
@@ -148,6 +155,18 @@ export function Goals() {
     const liabilities = totalLiabilitiesBase(relevantLiabilities, base)
     return built.totalValueBase - liabilities
   }, [data, selectedOwner, selectedCountry, base])
+
+  // India portfolio value converted to GBP (for goals that opt-in to include India)
+  const indiaPortfolioValueGBP = useMemo(() => {
+    if (!data) return 0
+    let filtered = selectedOwner === 'all'
+      ? data.holdings
+      : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
+    filtered = filtered.filter((h) => h.currency === 'INR')
+    const built = buildPortfolio(filtered, data.prices, data.fxRates, 'GBP')
+    const indiaLiabilities = totalLiabilitiesBase(loadLiabilities().filter((l) => l.currency === 'INR'), 'GBP')
+    return Math.max(0, built.totalValueBase - indiaLiabilities)
+  }, [data, selectedOwner])
 
   const summary = useMemo(() => {
     const totalTarget = goals.reduce((a, g) => a + g.targetAmount, 0)
@@ -354,13 +373,25 @@ export function Goals() {
         ) : (
           <Card tone="elevated" className="space-y-4">
             {goals.map((g) => {
-              const currentAmount = currentPortfolioValue
-              const progress = g.targetAmount <= 0 ? 0 : Math.min((currentAmount / g.targetAmount) * 100, 100)
+              const effectiveValue = currentPortfolioValue + (g.includeIndia ? indiaPortfolioValueGBP : 0)
+              const progress = g.targetAmount <= 0 ? 0 : Math.min((effectiveValue / g.targetAmount) * 100, 100)
               return (
                 <div key={g.id}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-medium">{g.title}</div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
+                      {/* Include India toggle — only shown on UK goals page */}
+                      {country === 'UK' && (
+                        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-500 select-none">
+                          <input
+                            type="checkbox"
+                            checked={g.includeIndia}
+                            onChange={(e) => toggleIndiaMutation.mutate({ id: g.id, includeIndia: e.target.checked })}
+                            className="h-3.5 w-3.5 rounded accent-indigo-500"
+                          />
+                          🇮🇳 India
+                        </label>
+                      )}
                       <div className="text-xs tabular-nums text-slate-500">{progress.toFixed(0)}%</div>
                       <button
                         type="button"
@@ -381,8 +412,13 @@ export function Goals() {
                       style={{ width: `${progress}%` }}
                     />
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {formatMoney(currentAmount, base)} / {formatMoney(g.targetAmount, base)}
+                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                    <span>{formatMoney(effectiveValue, base)} / {formatMoney(g.targetAmount, base)}</span>
+                    {g.includeIndia && indiaPortfolioValueGBP > 0 && (
+                      <span className="rounded-full bg-indigo-500/10 px-1.5 py-0.5 text-indigo-500">
+                        +{formatMoney(indiaPortfolioValueGBP, 'GBP')} 🇮🇳
+                      </span>
+                    )}
                   </div>
                 </div>
               )
