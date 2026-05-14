@@ -10,15 +10,15 @@ import { formatMoney } from '@/utils/format'
 
 export function NetWorthProgress() {
   const { data, isLoading, error } = usePortfolio()
-  const { selectedOwner, visualStyle } = useUi()
+  const { selectedOwner, selectedCountry, visualStyle } = useUi()
 
   const view = useMemo(() => {
     if (!data) return null
-    const base = data.settings.baseCurrency || 'GBP'
+    const base = selectedCountry === 'India' ? 'INR' : (data.settings.baseCurrency || 'GBP')
     const liabilities = totalLiabilitiesBase(loadLiabilities(), base)
-    const derived = deriveNetWorthHistory(data, selectedOwner, liabilities)
+    const derived = deriveNetWorthHistory(data, selectedOwner, liabilities, selectedCountry)
     return { ...derived, base }
-  }, [data, selectedOwner])
+  }, [data, selectedOwner, selectedCountry])
 
   if (isLoading) return <Loading />
   if (error) return <PageBody><EmptyState title="Couldn't load net worth progress" body={(error as Error).message} /></PageBody>
