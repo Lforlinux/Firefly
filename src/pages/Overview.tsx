@@ -278,7 +278,7 @@ export function Overview() {
             <KpiCard
               label="Net worth"
               value={money(netWorth)}
-              valueClassName={is3d ? 'ff-networth-value' : ''}
+              valueClassName={`text-4xl sm:text-[2.6rem] leading-none${is3d ? ' ff-networth-value' : ''}`}
               sub={livePriceCount === 0 ? 'cost basis' : `${view.investedRows.length} positions`}
             />
           </Link>

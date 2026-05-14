@@ -91,7 +91,7 @@ export function KpiCard({
         <span>{label}</span>
         {icon}
       </div>
-      <div className={`mt-2.5 text-3xl font-semibold tabular-nums sm:text-[2rem] ${valueClass} ${valueClassName}`}>{value}</div>
+      <div className={`mt-2.5 text-3xl font-semibold tabular-nums sm:text-[2.1rem] ${valueClass} ${valueClassName}`}>{value}</div>
       {sub && <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">{sub}</div>}
     </Card>
   )
