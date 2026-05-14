@@ -201,7 +201,6 @@ export function Overview() {
     totalCostBase,
     totalGainLoss,
     totalGainLossPct,
-    cashValueBase,
     allocation,
     top,
     base,
@@ -217,7 +216,6 @@ export function Overview() {
     dailyMovement,
     prevCloseAsOf,
   } = view
-  const investedValue = totalValueBase - cashValueBase
   const is3d = visualStyle === 'premium3d'
   const hidden = '•••••'
   const money = (v: number) => (privacyMode ? hidden : formatMoney(v, base))
@@ -286,8 +284,8 @@ export function Overview() {
           </Link>
           <KpiCard
             label="Invested"
-            value={money(totalCostBase - cashValueBase)}
-            sub={privacyMode ? hidden : `Value: ${formatMoney(investedValue, base)}`}
+            value={money(totalCostBase)}
+            sub={privacyMode ? hidden : `Value: ${formatMoney(totalValueBase, base)}`}
           />
           <KpiCard
             label="Total G/L"
