@@ -25,7 +25,7 @@ export function AssetDetail() {
 
   const { data: history, isLoading: historyLoading, error: historyError } = useQuery({
     queryKey: ['priceHistory', ticker, range],
-    queryFn: () => jsonFetch<HistoryResponse>(`/api/prices/history?ticker=${encodeURIComponent(ticker!)}&range=${range}`),
+    queryFn: () => jsonFetch<HistoryResponse>(`/api/portfolio/holdings?ticker=${encodeURIComponent(ticker!)}&history=${range}`),
     enabled: !!ticker,
     staleTime: 5 * 60 * 1000,
     retry: 1,
