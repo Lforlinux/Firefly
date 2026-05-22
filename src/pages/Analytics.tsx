@@ -348,10 +348,9 @@ export function Analytics() {
 
             {/* Priya */}
             {(() => {
-              const autoAjbell = isa?.byOwner['Priya']?.['ajbell'] ?? 0
-              const transferIn = isa?.transferByOwner?.['Priya']?.['ajbell'] ?? 0
-              const rawTotal = autoAjbell > 0 ? autoAjbell : ajbellAmount
-              const total = Math.max(0, rawTotal - transferIn)   // transfers don't count toward allowance
+              const autoAjbell = isa?.byOwner['Priya']?.['ajbell'] ?? 0  // already excludes transfers (API-side)
+              const transferIn = isa?.transferByOwner?.['Priya']?.['ajbell'] ?? 0  // display only
+              const total = autoAjbell > 0 ? autoAjbell : ajbellAmount
               const isAuto = autoAjbell > 0
               const remaining = Math.max(0, ISA_LIMIT - total)
               const usedPct = Math.min(100, (total / ISA_LIMIT) * 100)
