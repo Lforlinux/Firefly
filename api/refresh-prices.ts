@@ -39,7 +39,9 @@ async function fetchT212Prices(
     const raw = String(pos.ticker || '')
     const ticker = raw.replace(/_[A-Z]+_EQ$/, '').replace(/_EQ$/, '').toUpperCase()
     if (!tickerSet.has(ticker)) continue
-    const price = Number(pos.currentPrice ?? pos.averagePrice)
+    // Never fall back to averagePrice (cost basis) — that would book unrealised
+    // gain/loss as a single day's movement whenever currentPrice is briefly null.
+    const price = Number(pos.currentPrice)
     if (!Number.isFinite(price) || price <= 0) continue
     out[ticker] = { price, currency: 'USD', asOf }
   }

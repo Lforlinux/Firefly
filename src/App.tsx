@@ -15,6 +15,7 @@ import { Settings } from '@/pages/Settings'
 import { NetWorthProgress } from '@/pages/NetWorthProgress'
 import { Analytics } from '@/pages/Analytics'
 import { DailyMovement } from '@/pages/DailyMovement'
+import { AssetDetail } from '@/pages/AssetDetail'
 import { SignupForm } from '@/components/SignupForm'
 import { LoginForm } from '@/components/LoginForm'
 
@@ -75,6 +76,7 @@ function ProtectedRoutes() {
     <Routes>
       <Route element={<AppLayout />}>
         <Route path="/" element={<Overview />} />
+        <Route path="/assets/:ticker" element={<AssetDetail />} />
         <Route path="/assets" element={<Holdings />} />
         <Route path="/liabilities" element={<Liabilities />} />
         <Route path="/snapshots" element={<Snapshots />} />

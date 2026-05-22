@@ -425,23 +425,28 @@ export function Overview() {
             ) : (
               <ul className="mt-4 divide-y divide-slate-200 dark:divide-slate-800">
                 {top.map((h) => (
-                  <li key={h.id} className="flex items-center justify-between py-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">{h.ticker}</span>
-                        <span className="ff-type-pill rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-400">{h.type}</span>
+                  <li key={h.id}>
+                    <Link
+                      to={`/assets/${encodeURIComponent(h.ticker)}`}
+                      className="flex items-center justify-between py-3 hover:opacity-80 transition-opacity"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">{h.ticker}</span>
+                          <span className="ff-type-pill rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-400">{h.type}</span>
+                        </div>
+                        <div className="truncate text-xs text-slate-500 dark:text-slate-400">{h.name}</div>
                       </div>
-                      <div className="truncate text-xs text-slate-500 dark:text-slate-400">{h.name}</div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">{privacyMode ? hidden : formatMoney(h.valueBase, base)}</div>
-                        <div className="text-xs tabular-nums text-slate-500 dark:text-slate-400">{(h.weight * 100).toFixed(1)}%</div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">{privacyMode ? hidden : formatMoney(h.valueBase, base)}</div>
+                          <div className="text-xs tabular-nums text-slate-500 dark:text-slate-400">{(h.weight * 100).toFixed(1)}%</div>
+                        </div>
+                        {!h.valueIsCost && !privacyMode && (
+                          <GainLossBadge amount={h.gainLoss} pct={h.gainLossPct} currency={base} />
+                        )}
                       </div>
-                      {!h.valueIsCost && !privacyMode && (
-                        <GainLossBadge amount={h.gainLoss} pct={h.gainLossPct} currency={base} />
-                      )}
-                    </div>
+                    </Link>
                   </li>
                 ))}
               </ul>

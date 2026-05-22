@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Search } from 'lucide-react'
 import { usePortfolio, useUi } from '@/context/AppContext'
@@ -408,7 +409,18 @@ export function Holdings() {
                     const tone = r.gainLoss > 0 ? 'text-emerald-500' : r.gainLoss < 0 ? 'text-rose-500' : 'text-slate-500'
                     return (
                       <tr key={r.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-900/40">
-                        <td className="whitespace-nowrap px-4 py-2.5 font-mono font-semibold text-slate-900 dark:text-slate-100">{r.ticker}</td>
+                        <td className="whitespace-nowrap px-4 py-2.5 font-mono font-semibold">
+                          {r.type !== 'cash' ? (
+                            <Link
+                              to={`/assets/${encodeURIComponent(r.ticker)}`}
+                              className="text-slate-900 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-indigo-400 transition-colors"
+                            >
+                              {r.ticker}
+                            </Link>
+                          ) : (
+                            <span className="text-slate-900 dark:text-slate-100">{r.ticker}</span>
+                          )}
+                        </td>
                         <td className="px-4 py-2.5">
                           <div className="max-w-xs truncate text-slate-900 dark:text-slate-100" title={r.name}>{r.name}</div>
                           <div className="text-xs text-slate-500 dark:text-slate-400">{r.sector}{r.owner ? ` · ${r.owner}` : ''}</div>
