@@ -349,7 +349,9 @@ export function Analytics() {
             {/* Priya */}
             {(() => {
               const autoAjbell = isa?.byOwner['Priya']?.['ajbell'] ?? 0
-              const total = autoAjbell > 0 ? autoAjbell : ajbellAmount
+              const transferIn = isa?.transferByOwner?.['Priya']?.['ajbell'] ?? 0
+              const rawTotal = autoAjbell > 0 ? autoAjbell : ajbellAmount
+              const total = Math.max(0, rawTotal - transferIn)   // transfers don't count toward allowance
               const isAuto = autoAjbell > 0
               const remaining = Math.max(0, ISA_LIMIT - total)
               const usedPct = Math.min(100, (total / ISA_LIMIT) * 100)
@@ -359,21 +361,26 @@ export function Analytics() {
                     <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Priya</span>
                     <span className="text-xs text-slate-500">
                       <span className="font-semibold text-slate-800 dark:text-slate-100">£{total.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
-                      {' '}/ £{ISA_LIMIT.toLocaleString()} used · <span className="text-emerald-600 dark:text-emerald-400">£{remaining.toLocaleString('en-GB', { maximumFractionDigits: 0 })} left</span>
+                      {' '}/ £{ISA_LIMIT.toLocaleString()} used · <span className={remaining > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}>£{remaining.toLocaleString('en-GB', { maximumFractionDigits: 0 })} left</span>
                     </span>
                   </div>
                   <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                     <div
                       className="flex h-full items-center justify-center bg-pink-500 text-[10px] font-semibold text-white"
                       style={{ width: `${usedPct}%` }}
-                      title={`AJBell: £${total.toFixed(0)}`}
+                      title={`AJ Bell new contributions: £${total.toFixed(0)}`}
                     >
                       {usedPct > 6 ? 'AJ Bell' : ''}
                     </div>
                     <div className="flex-1 bg-slate-100 dark:bg-slate-800" />
                   </div>
-                  <div className="mt-2 flex items-center gap-4 text-xs text-slate-500">
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
                     <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-pink-500" />AJ Bell</span>
+                    {transferIn > 0 && (
+                      <span className="text-slate-400">
+                        +£{transferIn.toLocaleString('en-GB', { maximumFractionDigits: 0 })} ISA transfer in (excluded)
+                      </span>
+                    )}
                     {isAuto ? (
                       <span className="text-slate-400">Auto-synced from AJ Bell CSV</span>
                     ) : (

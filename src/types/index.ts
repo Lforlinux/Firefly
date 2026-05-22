@@ -64,6 +64,8 @@ export interface PriceCache {
 export interface IsaSummary {
   fy: { start: string; end: string; label: string }
   byOwner: Record<string, Record<string, number>>
+  /** ISA-transfer amounts (excluded from allowance used) keyed by owner → source */
+  transferByOwner: Record<string, Record<string, number>>
 }
 
 /** Shape returned by GET /api/portfolio — data.json + data.cache.json merged. */

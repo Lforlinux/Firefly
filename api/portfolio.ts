@@ -53,7 +53,10 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
       db.query(`SELECT ticker, price, currency, as_of, prev_close, prev_close_as_of FROM price_cache`),
       db.query(`SELECT pair, rate, as_of FROM fx_cache`),
       db.query(
-        `SELECT owner, source, SUM(amount) AS total FROM isa_deposits
+        `SELECT owner, source,
+                SUM(CASE WHEN NOT is_transfer THEN amount ELSE 0 END) AS total,
+                SUM(CASE WHEN is_transfer     THEN amount ELSE 0 END) AS transfer_in
+         FROM isa_deposits
          WHERE user_id = $1 AND deposit_date >= $2 AND deposit_date <= $3
          GROUP BY owner, source`,
         [auth.userId, fyStart, fyEnd]
@@ -152,10 +155,13 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
     }))
 
     const isaByOwner: Record<string, Record<string, number>> = {}
+    const isaTransferByOwner: Record<string, Record<string, number>> = {}
     for (const row of (isaDeposits.rows || [])) {
       const o = String(row.owner)
       if (!isaByOwner[o]) isaByOwner[o] = {}
+      if (!isaTransferByOwner[o]) isaTransferByOwner[o] = {}
       isaByOwner[o][String(row.source)] = Number(row.total)
+      isaTransferByOwner[o][String(row.source)] = Number(row.transfer_in ?? 0)
     }
     for (const row of (isaIe.rows || [])) {
       const o = String(row.owner)
@@ -171,7 +177,7 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
       prices: pricesMap,
       fxRates: fxMap,
       lastRefresh,
-      isa: { fy: { start: fyStart, end: fyEnd, label: fyLabel }, byOwner: isaByOwner },
+      isa: { fy: { start: fyStart, end: fyEnd, label: fyLabel }, byOwner: isaByOwner, transferByOwner: isaTransferByOwner },
       dailyMovements: normalizedMovements,
     })
   } catch (e) {
