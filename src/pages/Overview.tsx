@@ -82,29 +82,31 @@ export function Overview() {
     const totalLiabGBP = totalLiabilitiesBase(loadLiabilities(), gbpBase)
     const totalNetWorthGBP = totalBuilt.totalValueBase - totalLiabGBP
 
-    // MTD baseline = last snapshot before this month.
-    // Each snapshot's notes may contain {"uk_gbp": N, "india_inr": N} for country-specific values.
-    // UK MTD uses uk_gbp (GBP); India MTD uses india_inr (INR).
+    // MTD = sum of daily price movements since the 1st of this month.
+    // daily_movements is market-only (new holdings have no prevClose on buy day,
+    // so they're skipped by the cron). No manual snapshots needed.
     const thisMonthStart = new Date().toISOString().slice(0, 8) + '01'
-    const prevMonthSnap = [...(data.snapshots || [])]
-      .filter((s) => s.date < thisMonthStart)
+    const allMovements = data.dailyMovements || []
+
+    // Sum movements for 'all' owner within this calendar month
+    const mtdMovements = allMovements.filter(
+      (m) => m.owner === 'all' && m.date >= thisMonthStart
+    )
+    const monthDelta = mtdMovements.length > 0
+      ? mtdMovements.reduce((sum, m) => sum + m.movementGBP, 0)
+      : null
+
+    // Opening date & value = last captured day before this month
+    const lastPrevMovement = allMovements
+      .filter((m) => m.owner === 'all' && m.date < thisMonthStart)
       .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null
-    let monthStartSnapshot: { date: string; value: number } | null = null
-    let monthStartValue: number | null = null
-    if (prevMonthSnap) {
-      let snapValue: number | null = null
-      try {
-        const parsed = JSON.parse(prevMonthSnap.notes || '{}')
-        if (selectedCountry === 'India' && parsed.india_inr) snapValue = Number(parsed.india_inr)
-        else if (selectedCountry === 'UK' && parsed.uk_gbp)  snapValue = Number(parsed.uk_gbp)
-      } catch { /* notes not JSON — fall back to total */ }
-      // Fallback: use total snapshot value (same currency as current view)
-      if (snapValue == null && selectedCountry === 'UK') snapValue = Number(prevMonthSnap.valueGBP || 0)
-      monthStartValue = snapValue
-      monthStartSnapshot = { date: prevMonthSnap.date, value: snapValue ?? 0 }
-    }
-    const monthDelta = monthStartValue != null ? netWorth - monthStartValue : null
-    const monthGrowthSteps = monthDelta != null && monthDelta > 0 ? Math.floor(monthDelta / 100) : 0
+    const monthStartSnapshot = lastPrevMovement
+      ? { date: lastPrevMovement.date, value: lastPrevMovement.portfolioValueGBP ?? 0 }
+      : null
+
+    const monthGrowthSteps = monthDelta != null && monthDelta > 0
+      ? Math.floor(monthDelta / 100)
+      : 0
     let essentialsScore = 0
     let fireProgress = 0
     let fireYears = 0
@@ -347,13 +349,15 @@ export function Overview() {
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Month-to-date signal</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  {selectedCountry === 'India' ? '🇮🇳 India' : '🇬🇧 UK'} portfolio vs {monthStartSnapshot ? monthStartSnapshot.date : 'month start'}
+                  Market gain only · new investments excluded
                 </p>
               </div>
               <CalendarClock className="mt-0.5 h-4 w-4 text-slate-400" />
             </div>
             {monthDelta == null ? (
-              <div className="mt-4 text-sm text-slate-400">No previous month snapshot yet</div>
+              <div className="mt-4 text-sm text-slate-400">
+                Waiting for first price capture of the month
+              </div>
             ) : (
               <>
                 <div className={`mt-4 text-xl font-semibold tabular-nums ${monthDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
@@ -361,9 +365,14 @@ export function Overview() {
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
                   {monthDelta >= 0
-                    ? `+£100 milestones hit this month: ${monthGrowthSteps}`
-                    : 'Market dip since last month close — potential add window.'}
+                    ? `+£100 milestones crossed: ${monthGrowthSteps}`
+                    : 'Market dip this month — potential buying opportunity.'}
                 </p>
+                {monthStartSnapshot && (
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Since {monthStartSnapshot.date}
+                  </p>
+                )}
               </>
             )}
             <Link to="/snapshots" className="mt-3 inline-block text-xs font-medium text-slate-600 underline-offset-2 hover:underline dark:text-slate-300">Open wealth timeline</Link>
