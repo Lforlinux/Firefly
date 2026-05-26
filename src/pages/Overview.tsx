@@ -104,9 +104,19 @@ export function Overview() {
       ? { date: lastPrevMovement.date, value: lastPrevMovement.portfolioValueGBP ?? 0 }
       : null
 
-    const monthGrowthSteps = monthDelta != null && monthDelta > 0
-      ? Math.floor(monthDelta / 100)
-      : 0
+    // Best / worst single day in the month
+    const bestDay  = mtdMovements.length > 0 ? mtdMovements.reduce((b, m) => m.movementGBP > b.movementGBP ? m : b) : null
+    const worstDay = mtdMovements.length > 0 ? mtdMovements.reduce((w, m) => m.movementGBP < w.movementGBP ? m : w) : null
+
+    // % gain: monthDelta / portfolio value at start of first captured day this month
+    // allMovements is DESC, so the oldest MTD row is at the end of mtdMovements
+    const firstMtdRow = mtdMovements.length > 0 ? mtdMovements[mtdMovements.length - 1] : null
+    const mtdOpenValue = firstMtdRow && firstMtdRow.portfolioValueGBP != null
+      ? firstMtdRow.portfolioValueGBP - firstMtdRow.movementGBP
+      : null
+    const mtdPct = mtdOpenValue && mtdOpenValue > 0 && monthDelta != null
+      ? monthDelta / mtdOpenValue
+      : null
     let essentialsScore = 0
     let fireProgress = 0
     let fireYears = 0
@@ -151,7 +161,10 @@ export function Overview() {
       fireYears,
       monthStartSnapshot,
       monthDelta,
-      monthGrowthSteps,
+      bestDay,
+      worstDay,
+      firstMtdRow,
+      mtdPct,
       totalNetWorthGBP,
       dailyMovement,
       prevCloseAsOf,
@@ -213,7 +226,10 @@ export function Overview() {
     fireYears,
     monthStartSnapshot,
     monthDelta,
-    monthGrowthSteps,
+    bestDay,
+    worstDay,
+    firstMtdRow,
+    mtdPct,
     netWorth,
     dailyMovement,
     prevCloseAsOf,
@@ -363,14 +379,16 @@ export function Overview() {
                 <div className={`mt-4 text-xl font-semibold tabular-nums ${monthDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                   {privacyMode ? hidden : (monthDelta >= 0 ? '+' : '') + formatMoney(monthDelta, base)}
                 </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  {monthDelta >= 0
-                    ? `+£100 milestones crossed: ${monthGrowthSteps}`
-                    : 'Market dip this month — potential buying opportunity.'}
-                </p>
-                {monthStartSnapshot && (
+                {mtdPct != null && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {mtdPct >= 0 ? '+' : ''}{formatPercent(mtdPct)} market return
+                    {monthStartSnapshot ? ` · since ${monthStartSnapshot.date}` : firstMtdRow ? ` · since ${firstMtdRow.date}` : ''}
+                  </p>
+                )}
+                {(bestDay || worstDay) && (
                   <p className="mt-0.5 text-xs text-slate-400">
-                    Since {monthStartSnapshot.date}
+                    {bestDay && <>▲ {new Date(bestDay.date + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} {bestDay.movementGBP >= 0 ? '+' : ''}{formatMoney(bestDay.movementGBP, base)}</>}
+                    {bestDay && worstDay && bestDay.date !== worstDay.date && <> &middot; ▼ {new Date(worstDay.date + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} {formatMoney(worstDay.movementGBP, base)}</>}
                   </p>
                 )}
               </>
