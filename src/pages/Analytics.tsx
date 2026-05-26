@@ -11,7 +11,11 @@ type GoalItem = { id: string; title: string; targetAmount: number }
 type FirePlanner = { monthlyExpense: number; fireMultiple: number; monthlyContribution: number; annualReturnPct: number }
 
 const ISA_LIMIT = 20_000
-const ISA_AJBELL_KEY = 'firefly.isa.priya.ajbell'
+const ISA_AJBELL_KEY  = 'firefly.isa.priya.ajbell'
+const BOE_RATE_KEY    = 'firefly.rates.boe'   // Bank of England base rate %
+const RBI_RATE_KEY    = 'firefly.rates.rbi'   // RBI repo rate %
+const DEFAULT_BOE     = 3.75   // current BoE base rate
+const DEFAULT_RBI     = 6.0    // current RBI repo rate
 
 
 function readGoals(): GoalItem[] {
@@ -46,11 +50,26 @@ export function Analytics() {
   const [ajbellInput, setAjbellInput] = useState(() => {
     try { return String(JSON.parse(localStorage.getItem(ISA_AJBELL_KEY) || '0') || '') } catch { return '' }
   })
+  const [boeInput, setBoeInput] = useState(() => {
+    try { return String(JSON.parse(localStorage.getItem(BOE_RATE_KEY) || String(DEFAULT_BOE))) } catch { return String(DEFAULT_BOE) }
+  })
+  const [rbiInput, setRbiInput] = useState(() => {
+    try { return String(JSON.parse(localStorage.getItem(RBI_RATE_KEY) || String(DEFAULT_RBI))) } catch { return String(DEFAULT_RBI) }
+  })
 
   const ajbellAmount = Math.max(0, Number(ajbellInput) || 0)
+  const boeRate = Math.max(0, Number(boeInput) || DEFAULT_BOE)
+  const rbiRate = Math.max(0, Number(rbiInput) || DEFAULT_RBI)
+
   useEffect(() => {
     localStorage.setItem(ISA_AJBELL_KEY, JSON.stringify(ajbellAmount))
   }, [ajbellAmount])
+  useEffect(() => {
+    localStorage.setItem(BOE_RATE_KEY, JSON.stringify(boeRate))
+  }, [boeRate])
+  useEffect(() => {
+    localStorage.setItem(RBI_RATE_KEY, JSON.stringify(rbiRate))
+  }, [rbiRate])
 
   const isa = data?.isa ?? null
 
@@ -285,6 +304,88 @@ export function Analytics() {
                 Refresh prices to load FX rate for INR conversion
               </div>
             )}
+          </Card>
+        )}
+
+        {/* Monthly interest calculator — shown alongside combined portfolio */}
+        {selectedCountry === 'UK' && (
+          <Card tone="elevated" className={is3d ? 'border-indigo-400/30 bg-gradient-to-br from-indigo-900/55 to-slate-900/45' : ''}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className={`text-sm font-semibold ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>
+                  Monthly interest at central bank rates
+                </h3>
+                <p className={`mt-0.5 text-xs ${is3d ? 'text-cyan-200/75' : 'text-slate-500'}`}>
+                  What your capital earns per month at the current base rate
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* GBP */}
+              <div className={`rounded-xl p-4 ${is3d ? 'bg-white/5' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-xs font-medium uppercase tracking-wider ${is3d ? 'text-indigo-200/80' : 'text-slate-500'}`}>
+                    🇬🇧 GBP · Bank of England
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      max="20"
+                      value={boeInput}
+                      onChange={(e) => setBoeInput(e.target.value)}
+                      className="w-14 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-right text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    />
+                    <span className={`text-xs ${is3d ? 'text-indigo-200/60' : 'text-slate-400'}`}>%</span>
+                  </div>
+                </div>
+                <div className={`mt-2 text-2xl font-semibold tabular-nums ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-50'}`}>
+                  {formatMoney((view.combinedNetWorthGBP * boeRate) / 100 / 12, 'GBP')}
+                  <span className={`ml-1 text-sm font-normal ${is3d ? 'text-indigo-200/60' : 'text-slate-400'}`}>/mo</span>
+                </div>
+                <div className={`mt-1 text-xs ${is3d ? 'text-indigo-200/50' : 'text-slate-400'}`}>
+                  {formatMoney((view.combinedNetWorthGBP * boeRate) / 100, 'GBP')} per year · on {formatMoney(view.combinedNetWorthGBP, 'GBP')}
+                </div>
+              </div>
+
+              {/* INR */}
+              <div className={`rounded-xl p-4 ${is3d ? 'bg-white/5' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-xs font-medium uppercase tracking-wider ${is3d ? 'text-indigo-200/80' : 'text-slate-500'}`}>
+                    🇮🇳 INR · Reserve Bank of India
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      max="20"
+                      value={rbiInput}
+                      onChange={(e) => setRbiInput(e.target.value)}
+                      className="w-14 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-right text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    />
+                    <span className={`text-xs ${is3d ? 'text-indigo-200/60' : 'text-slate-400'}`}>%</span>
+                  </div>
+                </div>
+                <div className={`mt-2 text-2xl font-semibold tabular-nums ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-50'}`}>
+                  {view.combinedNetWorthInr == null
+                    ? '—'
+                    : formatMoney((view.combinedNetWorthInr * rbiRate) / 100 / 12, 'INR')}
+                  <span className={`ml-1 text-sm font-normal ${is3d ? 'text-indigo-200/60' : 'text-slate-400'}`}>/mo</span>
+                </div>
+                <div className={`mt-1 text-xs ${is3d ? 'text-indigo-200/50' : 'text-slate-400'}`}>
+                  {view.combinedNetWorthInr == null
+                    ? 'Refresh prices to load FX'
+                    : `${formatMoneyCompact((view.combinedNetWorthInr * rbiRate) / 100, 'INR')} per year · on ${formatMoneyCompact(view.combinedNetWorthInr, 'INR')}`}
+                </div>
+              </div>
+            </div>
+
+            <div className={`mt-3 text-[11px] ${is3d ? 'text-indigo-200/40' : 'text-slate-400'}`}>
+              Simple interest only · tap the rate to update when central banks change rates
+            </div>
           </Card>
         )}
 
