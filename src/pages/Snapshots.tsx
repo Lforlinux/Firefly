@@ -26,10 +26,18 @@ export function Snapshots() {
     const base = data.settings.baseCurrency || 'GBP'
     const byDate = new Map<string, number>()
 
-    // Source 1: monthly snapshots — only include for 'all' owner view
+    // Source 1: monthly snapshots — only include for 'all' owner view.
+    // Prefer uk_gbp from notes JSON (UK-only, consistent with daily_movements).
+    // Fall back to valueGBP (combined inc. India) only if no uk_gbp present.
     if (selectedOwner === 'all') {
       for (const s of data.snapshots || []) {
-        const v = Number(s.valueGBP)
+        let v = Number(s.valueGBP)
+        try {
+          const parsed = JSON.parse(s.notes || '{}')
+          if (parsed?.uk_gbp && Number.isFinite(Number(parsed.uk_gbp))) {
+            v = Number(parsed.uk_gbp)
+          }
+        } catch { /* notes not JSON */ }
         if (v > 0) byDate.set(s.date, v)
       }
     }
