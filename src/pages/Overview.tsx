@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { AlertCircle, CalendarClock, Flame, ShieldCheck, TrendingUp } from 'lucide-react'
-import { usePortfolio, usePostSnapshot, usePostDailyMovement, useUi } from '@/context/AppContext'
+import { usePortfolio, usePostDailyMovement, useUi } from '@/context/AppContext'
 import { buildPortfolio, byType, topN, convertToBase } from '@/utils/calculations'
 import { formatMoney, formatPercent, formatRelative } from '@/utils/format'
 import { Card, EmptyState, GainLossBadge, KpiCard, Loading, PageBody, PageHeader } from '@/components/ui'
@@ -27,10 +27,8 @@ const TYPE_COLORS_3D: Record<string, string> = {
 
 export function Overview() {
   const { data, isLoading, error } = usePortfolio()
-  const postSnapshot = usePostSnapshot()
   const postDailyMovement = usePostDailyMovement()
   const { selectedOwner, privacyMode, visualStyle, selectedCountry, setSelectedCountry } = useUi()
-  const autoSnapshotKeyRef = useRef('')
   const autoMovementKeyRef = useRef('')
 
   const view = useMemo(() => {
@@ -170,21 +168,6 @@ export function Overview() {
       prevCloseAsOf,
     }
   }, [data, selectedOwner, selectedCountry])
-
-  const netWorthForAutoSnapshot = view?.totalNetWorthGBP ?? 0
-  useEffect(() => {
-    // country filter doesn't affect auto-snapshot — always snapshot the full GBP net worth
-    if (!data || !view || selectedOwner !== 'all') return
-    if (netWorthForAutoSnapshot <= 0) return
-    const today = new Date().toISOString().slice(0, 10)
-    const hasToday = data.snapshots.some((s) => s.date === today)
-    if (hasToday) return
-    const runKey = `${today}|${Math.round(netWorthForAutoSnapshot)}`
-    if (autoSnapshotKeyRef.current === runKey) return
-    autoSnapshotKeyRef.current = runKey
-    postSnapshot.mutate({ date: today, valueGBP: netWorthForAutoSnapshot })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, view, selectedOwner, netWorthForAutoSnapshot])
 
   // Auto-save today's movement — use ref guard to prevent re-firing on mutation state changes
   useEffect(() => {
