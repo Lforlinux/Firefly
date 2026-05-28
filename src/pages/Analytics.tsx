@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, ArrowRight, Gauge, PiggyBank, Target, TrendingUp } from 'lucide-react'
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { usePortfolio, useUi } from '@/context/AppContext'
 import { buildPortfolio } from '@/utils/calculations'
 import { loadLiabilities, totalLiabilitiesBase } from '@/utils/liabilities'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
 import { formatMoney, formatMoneyCompact } from '@/utils/format'
-
-type GoalItem = { id: string; title: string; targetAmount: number }
-type FirePlanner = { monthlyExpense: number; fireMultiple: number; monthlyContribution: number; annualReturnPct: number }
+import { fetchGoals } from '@/services/api'
+import type { FirePlannerData } from '@/services/api'
 
 function detectProvider(ticker: string, notes: string): string {
   const n = (notes || '').toLowerCase()
@@ -29,36 +30,21 @@ const RBI_RATE_KEY    = 'firefly.rates.rbi'   // RBI repo rate %
 const DEFAULT_BOE     = 3.75   // current BoE base rate
 const DEFAULT_RBI     = 6.0    // current RBI repo rate
 
-
-function readGoals(): GoalItem[] {
-  try {
-    const raw = localStorage.getItem('firefly.goals')
-    const parsed = raw ? JSON.parse(raw) : []
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function readFirePlanner(): FirePlanner {
-  try {
-    const raw = localStorage.getItem('firefly.firePlanner')
-    const parsed = raw ? JSON.parse(raw) : null
-    return {
-      monthlyExpense: Number(parsed?.monthlyExpense || 2500),
-      fireMultiple: Number(parsed?.fireMultiple || 30),
-      monthlyContribution: Number(parsed?.monthlyContribution || 1000),
-      annualReturnPct: Number(parsed?.annualReturnPct || 6),
-    }
-  } catch {
-    return { monthlyExpense: 2500, fireMultiple: 30, monthlyContribution: 1000, annualReturnPct: 6 }
-  }
-}
+const DEFAULT_FIRE: FirePlannerData = { monthlyExpense: 2500, fireMultiple: 30, monthlyContribution: 1000, annualReturnPct: 6 }
 
 export function Analytics() {
   const { data, isLoading, error } = usePortfolio()
   const { selectedOwner, selectedCountry, visualStyle } = useUi()
   const is3d = visualStyle === 'premium3d'
+  const country = selectedCountry === 'India' ? 'India' : 'UK'
+
+  // Goals + FIRE from DB (same query as Goals page — cached, no extra network hit)
+  const { data: goalsData } = useQuery({
+    queryKey: ['goals', country],
+    queryFn: () => fetchGoals(country),
+    staleTime: 5 * 60_000,
+  })
+
   const [ajbellInput, setAjbellInput] = useState(() => {
     try { return String(JSON.parse(localStorage.getItem(ISA_AJBELL_KEY) || '0') || '') } catch { return '' }
   })
@@ -111,8 +97,8 @@ export function Analytics() {
         : null
     const netWorthInr = gbpToInr != null ? netWorth * gbpToInr : null
 
-    const goals = readGoals()
-    const fire = readFirePlanner()
+    const goals = goalsData?.goals ?? []
+    const fire: FirePlannerData = goalsData?.firePlanner ?? DEFAULT_FIRE
     const fireTarget = fire.monthlyExpense * 12 * fire.fireMultiple
     const fireProgress = fireTarget > 0 ? Math.min((netWorth / fireTarget) * 100, 100) : 0
 
@@ -194,7 +180,43 @@ export function Analytics() {
       combinedNetWorthInr,
       providerBreakdown,
     }
-  }, [data, selectedOwner, selectedCountry])
+  }, [data, selectedOwner, selectedCountry, goalsData])
+
+  // Month-over-month portfolio growth %
+  // Combines historical snapshots (uk_gbp from notes) + daily_movements for recent months
+  const monthlyGrowth = useMemo(() => {
+    if (!data) return []
+    const byMonth = new Map<string, number>()
+
+    // Source 1: snapshots — prefer uk_gbp from notes JSON
+    for (const s of data.snapshots || []) {
+      let v = Number(s.valueGBP)
+      try {
+        const parsed = JSON.parse(s.notes || '{}')
+        if (parsed?.uk_gbp && Number.isFinite(Number(parsed.uk_gbp))) v = Number(parsed.uk_gbp)
+      } catch { /* ignore */ }
+      if (v > 0) byMonth.set(s.date.slice(0, 7), v)
+    }
+
+    // Source 2: daily_movements (owner='all') — last recorded value per month wins
+    const sorted = [...(data.dailyMovements || [])]
+      .filter((m) => m.owner === 'all' && m.portfolioValueGBP != null && m.portfolioValueGBP > 0)
+      .sort((a, b) => a.date.localeCompare(b.date))
+    for (const m of sorted) byMonth.set(m.date.slice(0, 7), m.portfolioValueGBP!)
+
+    const months = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+
+    const result: Array<{ month: string; pct: number; label: string }> = []
+    for (let i = 1; i < months.length; i++) {
+      const [month, value] = months[i]
+      const [, prev] = months[i - 1]
+      const pct = prev > 0 ? ((value - prev) / prev) * 100 : 0
+      const dt = new Date(month + '-01T12:00:00Z')
+      const label = dt.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+      result.push({ month, pct, label })
+    }
+    return result
+  }, [data])
 
   if (isLoading) return <Loading />
   if (error) return <PageBody><EmptyState title="Couldn't load analytics" body={(error as Error).message} /></PageBody>
@@ -461,6 +483,58 @@ export function Analytics() {
                 </tfoot>
               </table>
             </div>
+          </Card>
+        )}
+
+        {/* Monthly growth % chart — UK view, needs at least 2 months of data */}
+        {selectedCountry !== 'India' && monthlyGrowth.length >= 2 && (
+          <Card tone="elevated">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Monthly portfolio growth</h3>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Month-over-month % change · {monthlyGrowth.length} months · historical snapshots + daily tracking
+            </p>
+            <div className="mt-4 h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyGrowth} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="30%">
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" vertical={false} />
+                  <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" tickLine={false} />
+                  <YAxis
+                    fontSize={10}
+                    stroke="#94a3b8"
+                    tickLine={false}
+                    axisLine={false}
+                    width={42}
+                    tickFormatter={(v: number) => `${v > 0 ? '+' : ''}${v.toFixed(1)}%`}
+                  />
+                  <Tooltip
+                    formatter={(v: number) => [`${v > 0 ? '+' : ''}${v.toFixed(2)}%`, 'Monthly return']}
+                    contentStyle={{ borderRadius: 8 }}
+                  />
+                  <Bar dataKey="pct" radius={[3, 3, 0, 0]}>
+                    {monthlyGrowth.map((entry) => (
+                      <Cell
+                        key={entry.month}
+                        fill={entry.pct >= 0 ? '#10b981' : '#f43f5e'}
+                        fillOpacity={0.85}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {/* Summary row */}
+            {(() => {
+              const positive = monthlyGrowth.filter((m) => m.pct >= 0).length
+              const best = monthlyGrowth.reduce((b, m) => m.pct > b.pct ? m : b, monthlyGrowth[0])
+              const worst = monthlyGrowth.reduce((w, m) => m.pct < w.pct ? m : w, monthlyGrowth[0])
+              return (
+                <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
+                  <span><span className="font-medium text-emerald-600 dark:text-emerald-400">{positive}</span> / {monthlyGrowth.length} months positive</span>
+                  <span>Best <span className="font-medium text-emerald-600 dark:text-emerald-400">+{best.pct.toFixed(2)}%</span> {best.label}</span>
+                  <span>Worst <span className="font-medium text-rose-500">{worst.pct.toFixed(2)}%</span> {worst.label}</span>
+                </div>
+              )
+            })()}
           </Card>
         )}
 
