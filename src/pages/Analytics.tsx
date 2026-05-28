@@ -159,9 +159,9 @@ export function Analytics() {
     const combinedNetWorthGBP = allBuilt.totalValueBase - allLiabilitiesTotal
     const combinedNetWorthInr = gbpToInr != null ? combinedNetWorthGBP * gbpToInr : null
 
-    // Provider breakdown — group all holdings by (owner, provider), sum valueBase in GBP
+    // Provider breakdown — respects country filter via built.rows
     const providerMap = new Map<string, number>()
-    for (const row of allBuilt.rows) {
+    for (const row of built.rows) {
       const owner = row.owner || 'KLN'
       const provider = detectProvider(row.ticker, row.notes || '')
       const key = `${owner}||${provider}`
@@ -419,10 +419,12 @@ export function Analytics() {
         )}
 
         {/* Provider breakdown table */}
-        {view.providerBreakdown.length > 0 && selectedCountry !== 'India' && (
+        {view.providerBreakdown.length > 0 && (
           <Card tone="elevated">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Where your money is held</h3>
-            <p className="mt-0.5 text-xs text-slate-500">All providers · values in GBP at live prices</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {selectedCountry === 'India' ? '🇮🇳 India holdings · values in INR' : '🇬🇧 UK holdings · values in GBP'} · live prices
+            </p>
             <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
               <table className="w-full text-sm">
                 <thead>
@@ -435,13 +437,13 @@ export function Analytics() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {view.providerBreakdown.map((row) => {
-                    const pct = view.combinedNetWorthGBP > 0 ? (row.valueGBP / view.combinedNetWorthGBP) * 100 : 0
+                    const pct = view.netWorth > 0 ? (row.valueGBP / view.netWorth) * 100 : 0
                     return (
                       <tr key={`${row.owner}-${row.provider}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                         <td className="px-3 py-2.5 font-medium text-slate-800 dark:text-slate-200">{row.owner}</td>
                         <td className="px-3 py-2.5 text-slate-600 dark:text-slate-400">{row.provider}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-slate-900 dark:text-slate-100">
-                          {formatMoney(row.valueGBP, 'GBP')}
+                          {formatMoney(row.valueGBP, view.base)}
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-slate-400">{pct.toFixed(1)}%</td>
                       </tr>
@@ -452,7 +454,7 @@ export function Analytics() {
                   <tr className="border-t-2 border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60">
                     <td colSpan={2} className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Total</td>
                     <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-                      {formatMoney(view.combinedNetWorthGBP, 'GBP')}
+                      {formatMoney(view.netWorth, view.base)}
                     </td>
                     <td className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">100%</td>
                   </tr>
