@@ -436,6 +436,7 @@ const IE_ISIN_TO_TICKER: Record<string, { ticker: string; name: string }> = {
   'IE00BFMXXD54': { ticker: 'VUAG.L',  name: 'Vanguard S&P 500' },
   'IE0032077012': { ticker: 'EQQQ.L',  name: 'Invesco Nasdaq 100' },
   'IE00B4ND3602': { ticker: 'SGLN.L',  name: 'iShares Physical Gold' },
+  'IE000I8KRLL9': { ticker: 'SEMI.L',  name: 'iShares MSCI Global Semiconductors' },
 }
 
 function parseInvestEngineCsv(csvText: string): Array<{ ticker: string; name: string; isin: string; shares: number; avgCost: number; currency: string }> {
