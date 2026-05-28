@@ -10,6 +10,18 @@ import { formatMoney, formatMoneyCompact } from '@/utils/format'
 type GoalItem = { id: string; title: string; targetAmount: number }
 type FirePlanner = { monthlyExpense: number; fireMultiple: number; monthlyContribution: number; annualReturnPct: number }
 
+function detectProvider(ticker: string, notes: string): string {
+  const n = (notes || '').toLowerCase()
+  const t = (ticker || '').toLowerCase()
+  if (n.includes('investengine')) return 'InvestEngine'
+  if (n.includes('trading212') || n.includes('t212')) return 'Trading 212'
+  if (n.includes('ajbell') || n.includes('aj bell')) return 'AJ Bell'
+  if (n.includes('kite') || t.endsWith('.ns') || t.endsWith('.bo')) return 'Zerodha'
+  if (n.includes('plum') || t.startsWith('cash:plum')) return 'Plum'
+  if (t.startsWith('cash:')) return 'Cash'
+  return 'Other'
+}
+
 const ISA_LIMIT = 20_000
 const ISA_AJBELL_KEY  = 'firefly.isa.priya.ajbell'
 const BOE_RATE_KEY    = 'firefly.rates.boe'   // Bank of England base rate %
@@ -147,6 +159,22 @@ export function Analytics() {
     const combinedNetWorthGBP = allBuilt.totalValueBase - allLiabilitiesTotal
     const combinedNetWorthInr = gbpToInr != null ? combinedNetWorthGBP * gbpToInr : null
 
+    // Provider breakdown — group all holdings by (owner, provider), sum valueBase in GBP
+    const providerMap = new Map<string, number>()
+    for (const row of allBuilt.rows) {
+      const owner = row.owner || 'KLN'
+      const provider = detectProvider(row.ticker, row.notes || '')
+      const key = `${owner}||${provider}`
+      providerMap.set(key, (providerMap.get(key) || 0) + row.valueBase)
+    }
+    const providerBreakdown = Array.from(providerMap.entries())
+      .map(([key, valueGBP]) => {
+        const [owner, provider] = key.split('||')
+        return { owner, provider, valueGBP }
+      })
+      .filter((r) => r.valueGBP > 0.5)
+      .sort((a, b) => a.owner.localeCompare(b.owner) || b.valueGBP - a.valueGBP)
+
     return {
       base,
       netWorth,
@@ -164,6 +192,7 @@ export function Analytics() {
       signals,
       combinedNetWorthGBP,
       combinedNetWorthInr,
+      providerBreakdown,
     }
   }, [data, selectedOwner, selectedCountry])
 
@@ -385,6 +414,50 @@ export function Analytics() {
 
             <div className={`mt-3 text-[11px] ${is3d ? 'text-indigo-200/40' : 'text-slate-400'}`}>
               Simple interest only · tap the rate to update when central banks change rates
+            </div>
+          </Card>
+        )}
+
+        {/* Provider breakdown table */}
+        {view.providerBreakdown.length > 0 && selectedCountry !== 'India' && (
+          <Card tone="elevated">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Where your money is held</h3>
+            <p className="mt-0.5 text-xs text-slate-500">All providers · values in GBP at live prices</p>
+            <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60">
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Owner</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Provider</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-slate-500">Value (GBP)</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-slate-500">%</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {view.providerBreakdown.map((row) => {
+                    const pct = view.combinedNetWorthGBP > 0 ? (row.valueGBP / view.combinedNetWorthGBP) * 100 : 0
+                    return (
+                      <tr key={`${row.owner}-${row.provider}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                        <td className="px-3 py-2.5 font-medium text-slate-800 dark:text-slate-200">{row.owner}</td>
+                        <td className="px-3 py-2.5 text-slate-600 dark:text-slate-400">{row.provider}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-900 dark:text-slate-100">
+                          {formatMoney(row.valueGBP, 'GBP')}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-400">{pct.toFixed(1)}%</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60">
+                    <td colSpan={2} className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Total</td>
+                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                      {formatMoney(view.combinedNetWorthGBP, 'GBP')}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">100%</td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </Card>
         )}
