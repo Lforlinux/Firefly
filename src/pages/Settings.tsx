@@ -3,7 +3,7 @@ import { usePortfolio, useUi } from '@/context/AppContext'
 import { formatRelative, formatDate } from '@/utils/format'
 import { Card, Loading, PageBody, PageHeader } from '@/components/ui'
 import { LogoutButton } from '@/components/LogoutButton'
-import { loadLiabilities, saveLiabilities } from '@/utils/liabilities'
+import { saveLiabilities } from '@/utils/liabilities'
 import { savePortfolio, flushHoldings, syncTrading212 } from '@/services/api'
 
 export function Settings() {
@@ -56,7 +56,7 @@ export function Settings() {
       preferences: uiPreferences,
       firePlanner,
       portfolio: data,
-      liabilities: loadLiabilities(),
+      liabilities: data.liabilities ?? [],
       goals,
       essentials,
     }

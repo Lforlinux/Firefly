@@ -22,7 +22,7 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
     const fyEnd = `${fyStartYear + 1}-04-05`
     const fyLabel = `${fyStartYear}/${String(fyStartYear + 1).slice(2)}`
 
-    const [holdings, snapshots, transactions, settingsRow, prices, fxRates, isaDeposits, isaIe, movementsRes] = await Promise.all([
+    const [holdings, snapshots, transactions, settingsRow, prices, fxRates, isaDeposits, isaIe, movementsRes, liabilitiesRes] = await Promise.all([
       db.query(
         `SELECT id, ticker, name, type, sector, shares, avg_cost, currency, notes, created_at, updated_at
          FROM holdings WHERE user_id = $1 ORDER BY created_at DESC`,
@@ -81,6 +81,11 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
          WHERE user_id = $1
          ORDER BY movement_date DESC
          LIMIT 90`,
+        [auth.userId]
+      ).catch(() => ({ rows: [] })),
+      db.query(
+        `SELECT id, name, category, lender, outstanding_balance, currency, notes
+         FROM liabilities WHERE user_id = $1 ORDER BY created_at ASC`,
         [auth.userId]
       ).catch(() => ({ rows: [] })),
     ])
@@ -169,6 +174,16 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
       isaByOwner[o]['investengine'] = Number(row.total)
     }
 
+    const normalizedLiabilities = (liabilitiesRes.rows || []).map((l: any) => ({
+      id: String(l.id),
+      name: String(l.name || ''),
+      category: String(l.category || 'custom'),
+      lender: String(l.lender || ''),
+      outstandingBalance: Number(l.outstanding_balance || 0),
+      currency: String(l.currency || 'GBP'),
+      notes: String(l.notes || ''),
+    }))
+
     return res.status(200).json({
       holdings: normalizedHoldings,
       snapshots: normalizedSnapshots,
@@ -179,6 +194,7 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
       lastRefresh,
       isa: { fy: { start: fyStart, end: fyEnd, label: fyLabel }, byOwner: isaByOwner, transferByOwner: isaTransferByOwner },
       dailyMovements: normalizedMovements,
+      liabilities: normalizedLiabilities,
     })
   } catch (e) {
     return res.status(500).json({ error: e instanceof Error ? e.message : 'Internal server error' })

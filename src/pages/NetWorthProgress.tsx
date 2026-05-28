@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ArrowLeft } from 'lucide-react'
 import { usePortfolio, useUi } from '@/context/AppContext'
-import { loadLiabilities, totalLiabilitiesBase } from '@/utils/liabilities'
+import { totalLiabilitiesBase } from '@/utils/liabilities'
 import { deriveNetWorthHistory } from '@/utils/netWorthHistory'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
 import { formatMoney } from '@/utils/format'
@@ -15,7 +15,7 @@ export function NetWorthProgress() {
   const view = useMemo(() => {
     if (!data) return null
     const base = selectedCountry === 'India' ? 'INR' : (data.settings.baseCurrency || 'GBP')
-    const liabilities = totalLiabilitiesBase(loadLiabilities(), base)
+    const liabilities = totalLiabilitiesBase(data.liabilities ?? [], base)
     const derived = deriveNetWorthHistory(data, selectedOwner, liabilities, selectedCountry)
     return { ...derived, base }
   }, [data, selectedOwner, selectedCountry])

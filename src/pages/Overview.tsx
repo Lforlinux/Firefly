@@ -6,7 +6,7 @@ import { usePortfolio, usePostDailyMovement, useUi } from '@/context/AppContext'
 import { buildPortfolio, byType, topN, convertToBase } from '@/utils/calculations'
 import { formatMoney, formatPercent, formatRelative } from '@/utils/format'
 import { Card, EmptyState, GainLossBadge, KpiCard, Loading, PageBody, PageHeader } from '@/components/ui'
-import { loadLiabilities, totalLiabilitiesBase } from '@/utils/liabilities'
+import { totalLiabilitiesBase } from '@/utils/liabilities'
 
 const TYPE_COLORS: Record<string, string> = {
   stock: '#22d3ee',
@@ -50,7 +50,7 @@ export function Overview() {
       : Number.isFinite(inverseInrGbp) && inverseInrGbp > 0
         ? 1 / Number(inverseInrGbp)
         : null
-    const liabilitiesTotal = totalLiabilitiesBase(loadLiabilities(), base)
+    const liabilitiesTotal = totalLiabilitiesBase(data.liabilities ?? [], base)
     const netWorth = built.totalValueBase - liabilitiesTotal
 
     // Today's movement: Σ((currentPrice - prevClose) × shares × fx), non-cash only
@@ -77,7 +77,7 @@ export function Overview() {
       ? data.holdings
       : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
     const totalBuilt = buildPortfolio(allOwnerHoldings, data.prices, data.fxRates, gbpBase)
-    const totalLiabGBP = totalLiabilitiesBase(loadLiabilities(), gbpBase)
+    const totalLiabGBP = totalLiabilitiesBase(data.liabilities ?? [], gbpBase)
     const totalNetWorthGBP = totalBuilt.totalValueBase - totalLiabGBP
 
     // MTD = sum of daily price movements since the 1st of this month.

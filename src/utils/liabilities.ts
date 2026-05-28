@@ -1,3 +1,12 @@
+/**
+ * Liabilities utility.
+ *
+ * Primary source of truth is the DB (liabilities[] on the Portfolio object).
+ * The localStorage helpers are kept for backwards-compat migration only.
+ */
+import type { DbLiabilityItem } from '@/types'
+
+// ─── Legacy localStorage shape (kept for one-time migration in Liabilities.tsx) ──
 export interface LiabilityItem {
   id: string
   name: string
@@ -38,7 +47,12 @@ export function saveLiabilities(items: LiabilityItem[]) {
   }
 }
 
-export function totalLiabilitiesBase(items: LiabilityItem[], baseCurrency: string): number {
+// ─── Summation helper — works with both DB and legacy items ────────────────────
+
+export function totalLiabilitiesBase(
+  items: (LiabilityItem | DbLiabilityItem)[],
+  baseCurrency: string,
+): number {
   return items
     .filter((l) => (l.currency || '').toUpperCase() === baseCurrency.toUpperCase())
     .reduce((sum, l) => sum + (Number.isFinite(l.outstandingBalance) ? l.outstandingBalance : 0), 0)

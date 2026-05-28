@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowRight, Gauge, PiggyBank, Target, TrendingUp } from 
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { usePortfolio, useUi } from '@/context/AppContext'
 import { buildPortfolio } from '@/utils/calculations'
-import { loadLiabilities, totalLiabilitiesBase } from '@/utils/liabilities'
+import { totalLiabilitiesBase } from '@/utils/liabilities'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
 import { formatMoney, formatMoneyCompact } from '@/utils/format'
 import { fetchGoals } from '@/services/api'
@@ -80,7 +80,7 @@ export function Analytics() {
     if (selectedCountry === 'UK') holdings = holdings.filter((h) => h.currency !== 'INR')
     else if (selectedCountry === 'India') holdings = holdings.filter((h) => h.currency === 'INR')
     const built = buildPortfolio(holdings, data.prices, data.fxRates, base)
-    const allLiabilities = loadLiabilities()
+    const allLiabilities = data.liabilities ?? []
     const relevantLiabilities = selectedCountry === 'India'
       ? allLiabilities.filter((l) => l.currency === 'INR')
       : selectedCountry === 'UK'

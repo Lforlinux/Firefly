@@ -68,6 +68,16 @@ export interface IsaSummary {
   transferByOwner: Record<string, Record<string, number>>
 }
 
+export interface DbLiabilityItem {
+  id: string
+  name: string
+  category: string
+  lender: string
+  outstandingBalance: number
+  currency: CurrencyCode
+  notes: string
+}
+
 /** Shape returned by GET /api/portfolio — data.json + data.cache.json merged. */
 export interface Portfolio extends PriceCache {
   holdings: Holding[]
@@ -76,6 +86,7 @@ export interface Portfolio extends PriceCache {
   settings: Settings
   isa?: IsaSummary
   dailyMovements: DailyMovement[]
+  liabilities: DbLiabilityItem[]
 }
 
 /** UI-derived: a holding plus its computed price/value/G&L in base currency. */

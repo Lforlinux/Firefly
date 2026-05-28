@@ -7,7 +7,7 @@ import { useUi } from '@/context/AppContext'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
 import { formatMoney } from '@/utils/format'
 import { buildPortfolio } from '@/utils/calculations'
-import { loadLiabilities, totalLiabilitiesBase } from '@/utils/liabilities'
+import { totalLiabilitiesBase } from '@/utils/liabilities'
 import {
   fetchGoals,
   addGoal as apiAddGoal,
@@ -146,7 +146,7 @@ export function Goals() {
     if (selectedCountry === 'UK') filtered = filtered.filter((h) => h.currency !== 'INR')
     else if (selectedCountry === 'India') filtered = filtered.filter((h) => h.currency === 'INR')
     const built = buildPortfolio(filtered, data.prices, data.fxRates, base)
-    const allLiabilities = loadLiabilities()
+    const allLiabilities = data.liabilities ?? []
     const relevantLiabilities = selectedCountry === 'India'
       ? allLiabilities.filter((l) => l.currency === 'INR')
       : selectedCountry === 'UK'
@@ -164,7 +164,7 @@ export function Goals() {
       : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
     filtered = filtered.filter((h) => h.currency === 'INR')
     const built = buildPortfolio(filtered, data.prices, data.fxRates, 'GBP')
-    const indiaLiabilities = totalLiabilitiesBase(loadLiabilities().filter((l) => l.currency === 'INR'), 'GBP')
+    const indiaLiabilities = totalLiabilitiesBase((data.liabilities ?? []).filter((l) => l.currency === 'INR'), 'GBP')
     return Math.max(0, built.totalValueBase - indiaLiabilities)
   }, [data, selectedOwner])
 

@@ -212,8 +212,42 @@ export interface FirePlannerData {
   annualReturnPct: number
 }
 
-export function fetchGoals(country: string): Promise<{ goals: GoalItem[]; firePlanner: FirePlannerData | null }> {
+export interface LiabilityItem {
+  id: string
+  name: string
+  category: string
+  lender: string
+  outstandingBalance: number
+  currency: string
+  notes: string
+}
+
+export function fetchGoals(country: string): Promise<{ goals: GoalItem[]; firePlanner: FirePlannerData | null; liabilities: LiabilityItem[] }> {
   return jsonFetch(`/api/goals?country=${encodeURIComponent(country)}`)
+}
+
+export function addLiability(item: Omit<LiabilityItem, 'id'>): Promise<{ liability: LiabilityItem }> {
+  return jsonFetch('/api/goals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'liability', ...item }),
+  })
+}
+
+export function updateLiability(id: string, patch: Partial<Omit<LiabilityItem, 'id'>>): Promise<{ ok: true }> {
+  return jsonFetch('/api/goals', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resource: 'liability', id, ...patch }),
+  })
+}
+
+export function removeLiability(id: string): Promise<{ ok: true }> {
+  return jsonFetch('/api/goals', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resource: 'liability', id }),
+  })
 }
 
 export function addGoal(title: string, targetAmount: number, country: string): Promise<{ goal: GoalItem }> {
