@@ -275,19 +275,18 @@ export function Overview() {
         )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <KpiCard
+            label="Portfolio"
+            value={money(totalValueBase)}
+            sub={privacyMode ? hidden : `Invested: ${formatMoney(totalCostBase, base)}`}
+          />
           <Link to="/networth-progress" className="block transition hover:opacity-95">
             <KpiCard
               label="Net worth"
               value={money(netWorth)}
-              valueClassName={`text-4xl sm:text-[2.6rem] leading-none${is3d ? ' ff-networth-value' : ''}`}
               sub={livePriceCount === 0 ? 'cost basis' : `${view.investedRows.length} positions`}
             />
           </Link>
-          <KpiCard
-            label="Invested"
-            value={money(totalCostBase)}
-            sub={privacyMode ? hidden : `Value: ${formatMoney(totalValueBase, base)}`}
-          />
           <KpiCard
             label="Total G/L"
             value={money(totalGainLoss)}
