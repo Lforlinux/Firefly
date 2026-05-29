@@ -45,6 +45,8 @@ export function Analytics() {
     staleTime: 5 * 60_000,
   })
 
+  const [includeDebt, setIncludeDebt] = useState(true)
+
   const [ajbellInput, setAjbellInput] = useState(() => {
     try { return String(JSON.parse(localStorage.getItem(ISA_AJBELL_KEY) || '0') || '') } catch { return '' }
   })
@@ -87,7 +89,7 @@ export function Analytics() {
         ? allLiabilities.filter((l) => l.currency !== 'INR')
         : allLiabilities
     const liabilities = totalLiabilitiesBase(relevantLiabilities, base)
-    const netWorth = built.totalValueBase - liabilities
+    const netWorth = built.totalValueBase - (includeDebt ? liabilities : 0)
     const directGbpInr = data.fxRates?.GBP_INR?.rate
     const inverseInrGbp = data.fxRates?.INR_GBP?.rate
     const gbpToInr = Number.isFinite(directGbpInr)
@@ -142,7 +144,7 @@ export function Analytics() {
       : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
     const allBuilt = buildPortfolio(allOwnerHoldings, data.prices, data.fxRates, gbpBase)
     const allLiabilitiesTotal = totalLiabilitiesBase(allLiabilities, gbpBase)
-    const combinedNetWorthGBP = allBuilt.totalValueBase - allLiabilitiesTotal
+    const combinedNetWorthGBP = allBuilt.totalValueBase - (includeDebt ? allLiabilitiesTotal : 0)
     const combinedNetWorthInr = gbpToInr != null ? combinedNetWorthGBP * gbpToInr : null
 
     // Provider breakdown — respects country filter via built.rows
@@ -180,7 +182,7 @@ export function Analytics() {
       combinedNetWorthInr,
       providerBreakdown,
     }
-  }, [data, selectedOwner, selectedCountry, goalsData])
+  }, [data, selectedOwner, selectedCountry, goalsData, includeDebt])
 
   // Month-over-month portfolio growth %
   // Combines historical snapshots (uk_gbp from notes) + daily_movements for recent months
@@ -224,7 +226,25 @@ export function Analytics() {
 
   return (
     <>
-      <PageHeader title="Analytics" subtitle="Intelligent insights across portfolio, goals, and trajectory." />
+      <PageHeader
+        title="Analytics"
+        subtitle="Intelligent insights across portfolio, goals, and trajectory."
+        right={
+          <button
+            type="button"
+            onClick={() => setIncludeDebt((d) => !d)}
+            className={[
+              'flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+              includeDebt
+                ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-700/50 dark:bg-rose-950/40 dark:text-rose-300'
+                : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800',
+            ].join(' ')}
+          >
+            <span className={['h-2 w-2 rounded-full', includeDebt ? 'bg-rose-500' : 'bg-slate-400'].join(' ')} />
+            {includeDebt ? 'Debt included' : 'Debt excluded'}
+          </button>
+        }
+      />
       <PageBody>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card tone="elevated">
