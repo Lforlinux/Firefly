@@ -87,6 +87,7 @@ function AccumulationPhaseCard({
   indiaValueGBP,
   firePlanner,
   fire,
+  goals,
   abData,
   is3d,
   base,
@@ -96,6 +97,7 @@ function AccumulationPhaseCard({
   indiaValueGBP: number
   firePlanner: FirePlannerData
   fire: { target: number; progress: number; years: number }
+  goals: Array<{ title: string; targetAmount: number }>
   abData: { monthlyAvg: number; breakdown: Record<string, number> } | null | undefined
   is3d: boolean
   base: string
@@ -108,13 +110,17 @@ function AccumulationPhaseCard({
   const netWorth = (includeDebt ? currentNetWorth : currentNetWorth + liabilitiesTotal)
     + (includeIndia ? indiaValueGBP : 0)
 
+  // Use the matching goal's target if one exists, otherwise fall back to FIRE planner
+  const accGoal = goals.find((g) => /accumulation/i.test(g.title))
+  const fireTarget = accGoal ? accGoal.targetAmount : fire.target
+
   const monthlyInvest = abData?.monthlyAvg ?? firePlanner.monthlyContribution
   const isLive = abData != null
 
-  const realYears = estimateYearsToTarget(netWorth, fire.target, monthlyInvest, firePlanner.annualReturnPct)
+  const realYears = estimateYearsToTarget(netWorth, fireTarget, monthlyInvest, firePlanner.annualReturnPct)
   const fireYear  = new Date().getFullYear() + realYears
 
-  const pct   = fire.target > 0 ? Math.min((netWorth / fire.target) * 100, 100) : 0
+  const pct   = fireTarget > 0 ? Math.min((netWorth / fireTarget) * 100, 100) : 0
   const phase = pct < 25 ? 'Early' : pct < 60 ? 'Mid' : 'Late'
   const phaseDesc = phase === 'Early'
     ? "You're in the most powerful stage — every pound invested now has the longest runway to compound. Consistency here beats everything else. Time in market > timing the market."
@@ -148,9 +154,9 @@ function AccumulationPhaseCard({
   // Insert FIRE milestone; dedupe if it overlaps a clone year
   const fireMilestone = {
     label: 'FIRE ✨',
-    value: fire.target,
+    value: fireTarget,
     years: realYears,
-    passive: passive(fire.target),
+    passive: passive(fireTarget),
     isFire: true,
   }
   const allMilestones = [...clones, fireMilestone]
@@ -219,7 +225,7 @@ function AccumulationPhaseCard({
       <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         {([
           { label: 'Net worth',    value: formatMoney(netWorth, base) },
-          { label: 'FIRE target',  value: formatMoney(fire.target, base) },
+          { label: accGoal ? 'Goal target' : 'FIRE target', value: formatMoney(fireTarget, base) },
           { label: 'Progress',     value: `${pct.toFixed(1)}%` },
           {
             label: isLive ? 'Invested/mo 🟢' : 'Planned/mo',
@@ -361,10 +367,10 @@ function AccumulationPhaseCard({
           today at {ann}% p.a. — even while you sleep.
           At FIRE that rises to{' '}
           <strong className={is3d ? 'text-cyan-200' : 'text-slate-700 dark:text-slate-300'}>
-            {formatMoney(passive(fire.target), base)}/month
+            {formatMoney(passive(fireTarget), base)}/month
           </strong>
-          {passive(fire.target) >= firePlanner.monthlyExpense
-            ? `, covering your ${formatMoney(firePlanner.monthlyExpense, base)}/mo expenses with ${formatMoney(passive(fire.target) - firePlanner.monthlyExpense, base)}/mo to spare.`
+          {passive(fireTarget) >= firePlanner.monthlyExpense
+            ? `, covering your ${formatMoney(firePlanner.monthlyExpense, base)}/mo expenses with ${formatMoney(passive(fireTarget) - firePlanner.monthlyExpense, base)}/mo to spare.`
             : `, partially offsetting your ${formatMoney(firePlanner.monthlyExpense, base)}/mo expenses.`}
           {isLive
             ? ' Monthly investment figure is live from your Actual Budget.'
@@ -701,6 +707,7 @@ export function Goals() {
             indiaValueGBP={indiaPortfolioValueGBP}
             firePlanner={firePlanner}
             fire={fire}
+            goals={goals}
             abData={abData}
             is3d={is3d}
             base={base}
