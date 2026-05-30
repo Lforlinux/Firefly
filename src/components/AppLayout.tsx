@@ -27,13 +27,13 @@ import { useAuth } from '@/context/AuthContext'
 import { listOwners } from '@/utils/calculations'
 import { formatRelative } from '@/utils/format'
 
-type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean }
+type NavItem = { to: string; label: string; mobileLabel?: string; icon: LucideIcon; end?: boolean }
 const NAV: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: Home, end: true },
+  { to: '/', label: 'Dashboard', mobileLabel: 'Home', icon: Home, end: true },
   { to: '/assets', label: 'Assets', icon: Vault },
-  { to: '/liabilities', label: 'Liabilities', icon: HandCoins },
-  { to: '/snapshots', label: 'Wealth Timeline', icon: PlusCircle },
-  { to: '/allocation', label: 'Allocation', icon: PieChart },
+  { to: '/liabilities', label: 'Liabilities', mobileLabel: 'Debts', icon: HandCoins },
+  { to: '/snapshots', label: 'Wealth Timeline', mobileLabel: 'Timeline', icon: PlusCircle },
+  { to: '/allocation', label: 'Allocation', mobileLabel: 'Alloc', icon: PieChart },
   { to: '/goals', label: 'Goals', icon: Goal },
   { to: '/essentials', label: 'Essentials', icon: ShieldCheck },
   { to: '/analytics', label: 'Analytics', icon: Brain },
@@ -210,10 +210,10 @@ export function AppLayout() {
           : 'fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/95 px-2 py-1 backdrop-blur dark:border-slate-800/90 dark:bg-slate-950/95 lg:hidden safe-area-pb'
       }>
         <div className="flex items-end gap-1">
-          {MOBILE_NAV.map(({ to, label, icon: Icon, end }) => (
+          {MOBILE_NAV.map(({ to, label, mobileLabel, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={mobileNavClass}>
               <Icon className="h-4 w-4" />
-              <span className="truncate">{label}</span>
+              <span className="truncate">{mobileLabel ?? label}</span>
             </NavLink>
           ))}
           <NavLink to="/settings" className={mobileNavClass}>
