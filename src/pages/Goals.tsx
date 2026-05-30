@@ -84,6 +84,7 @@ async function fetchABInvestments(): Promise<{ monthlyAvg: number; breakdown: Re
 function AccumulationPhaseCard({
   currentNetWorth,
   liabilitiesTotal,
+  indiaValueGBP,
   firePlanner,
   fire,
   abData,
@@ -92,6 +93,7 @@ function AccumulationPhaseCard({
 }: {
   currentNetWorth: number
   liabilitiesTotal: number
+  indiaValueGBP: number
   firePlanner: FirePlannerData
   fire: { target: number; progress: number; years: number }
   abData: { monthlyAvg: number; breakdown: Record<string, number> } | null | undefined
@@ -100,9 +102,11 @@ function AccumulationPhaseCard({
 }) {
   const [open, setOpen] = useState(false)
   const [includeDebt, setIncludeDebt] = useState(true)
+  const [includeIndia, setIncludeIndia] = useState(false)
 
   // Effective net worth for all calculations in this card
-  const netWorth = includeDebt ? currentNetWorth : currentNetWorth + liabilitiesTotal
+  const netWorth = (includeDebt ? currentNetWorth : currentNetWorth + liabilitiesTotal)
+    + (includeIndia ? indiaValueGBP : 0)
 
   const monthlyInvest = abData?.monthlyAvg ?? firePlanner.monthlyContribution
   const isLive = abData != null
@@ -174,20 +178,37 @@ function AccumulationPhaseCard({
           </span>
           <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
         </button>
-        {/* Debt toggle — always visible so it works even when collapsed */}
-        <button
-          type="button"
-          onClick={() => setIncludeDebt((d) => !d)}
-          className={[
-            'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
-            includeDebt
-              ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-700/50 dark:bg-rose-950/40 dark:text-rose-300'
-              : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900',
-          ].join(' ')}
-        >
-          <span className={['h-1.5 w-1.5 rounded-full', includeDebt ? 'bg-rose-500' : 'bg-slate-400'].join(' ')} />
-          {includeDebt ? 'Debt on' : 'Debt off'}
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* India toggle */}
+          {indiaValueGBP > 0 && (
+            <button
+              type="button"
+              onClick={() => setIncludeIndia((v) => !v)}
+              className={[
+                'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                includeIndia
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-700/50 dark:bg-indigo-950/40 dark:text-indigo-300'
+                  : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900',
+              ].join(' ')}
+            >
+              🇮🇳 {includeIndia ? 'India on' : 'India off'}
+            </button>
+          )}
+          {/* Debt toggle */}
+          <button
+            type="button"
+            onClick={() => setIncludeDebt((d) => !d)}
+            className={[
+              'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+              includeDebt
+                ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-700/50 dark:bg-rose-950/40 dark:text-rose-300'
+                : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900',
+            ].join(' ')}
+          >
+            <span className={['h-1.5 w-1.5 rounded-full', includeDebt ? 'bg-rose-500' : 'bg-slate-400'].join(' ')} />
+            {includeDebt ? 'Debt on' : 'Debt off'}
+          </button>
+        </div>
       </div>
 
       {/* ── Expanded content ── */}
@@ -677,6 +698,7 @@ export function Goals() {
           <AccumulationPhaseCard
             currentNetWorth={currentPortfolioValue}
             liabilitiesTotal={ukLiabilitiesTotal}
+            indiaValueGBP={indiaPortfolioValueGBP}
             firePlanner={firePlanner}
             fire={fire}
             abData={abData}
