@@ -83,6 +83,7 @@ async function fetchABInvestments(): Promise<{ monthlyAvg: number; breakdown: Re
 // ── Accumulation Phase card ────────────────────────────────────────────────────
 function AccumulationPhaseCard({
   currentNetWorth,
+  liabilitiesTotal,
   firePlanner,
   fire,
   abData,
@@ -90,6 +91,7 @@ function AccumulationPhaseCard({
   base,
 }: {
   currentNetWorth: number
+  liabilitiesTotal: number
   firePlanner: FirePlannerData
   fire: { target: number; progress: number; years: number }
   abData: { monthlyAvg: number; breakdown: Record<string, number> } | null | undefined
@@ -97,14 +99,18 @@ function AccumulationPhaseCard({
   base: string
 }) {
   const [open, setOpen] = useState(false)
+  const [includeDebt, setIncludeDebt] = useState(true)
+
+  // Effective net worth for all calculations in this card
+  const netWorth = includeDebt ? currentNetWorth : currentNetWorth + liabilitiesTotal
 
   const monthlyInvest = abData?.monthlyAvg ?? firePlanner.monthlyContribution
   const isLive = abData != null
 
-  const realYears = estimateYearsToTarget(currentNetWorth, fire.target, monthlyInvest, firePlanner.annualReturnPct)
+  const realYears = estimateYearsToTarget(netWorth, fire.target, monthlyInvest, firePlanner.annualReturnPct)
   const fireYear  = new Date().getFullYear() + realYears
 
-  const pct   = fire.progress
+  const pct   = fire.target > 0 ? Math.min((netWorth / fire.target) * 100, 100) : 0
   const phase = pct < 25 ? 'Early' : pct < 60 ? 'Mid' : 'Late'
   const phaseDesc = phase === 'Early'
     ? "You're in the most powerful stage — every pound invested now has the longest runway to compound. Consistency here beats everything else. Time in market > timing the market."
@@ -122,10 +128,10 @@ function AccumulationPhaseCard({
   const passive = (v: number) => (v * ann) / 100 / 12
 
   function yearsTo(target: number) {
-    return estimateYearsToTarget(currentNetWorth, target, monthlyInvest, ann)
+    return estimateYearsToTarget(netWorth, target, monthlyInvest, ann)
   }
 
-  const cloneBase = Math.max(1, currentNetWorth)
+  const cloneBase = Math.max(1, netWorth)
   const CLONE_MULTIPLES = [2, 5, 10]
   const clones = CLONE_MULTIPLES.map((n) => ({
     label: `${n}× clones`,
@@ -155,20 +161,34 @@ function AccumulationPhaseCard({
     <Card tone="elevated" className={is3d ? 'border-indigo-400/30 bg-gradient-to-br from-indigo-900/55 to-slate-900/45' : ''}>
 
       {/* ── Clickable header (always visible) ── */}
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-3 text-left"
-      >
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
           <span className="text-lg">🌱</span>
           <h3 className={`text-sm font-semibold ${is3d ? 'text-cyan-100' : ''}`}>Accumulation Phase</h3>
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${phaseBadge}`}>
             {phase} · {pct.toFixed(0)}%
           </span>
-        </div>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
-      </button>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {/* Debt toggle — always visible so it works even when collapsed */}
+        <button
+          type="button"
+          onClick={() => setIncludeDebt((d) => !d)}
+          className={[
+            'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+            includeDebt
+              ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-700/50 dark:bg-rose-950/40 dark:text-rose-300'
+              : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900',
+          ].join(' ')}
+        >
+          <span className={['h-1.5 w-1.5 rounded-full', includeDebt ? 'bg-rose-500' : 'bg-slate-400'].join(' ')} />
+          {includeDebt ? 'Debt on' : 'Debt off'}
+        </button>
+      </div>
 
       {/* ── Expanded content ── */}
       {open && <>
@@ -177,7 +197,7 @@ function AccumulationPhaseCard({
       {/* ── Stats grid ── */}
       <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         {([
-          { label: 'Net worth',    value: formatMoney(currentNetWorth, base) },
+          { label: 'Net worth',    value: formatMoney(netWorth, base) },
           { label: 'FIRE target',  value: formatMoney(fire.target, base) },
           { label: 'Progress',     value: `${pct.toFixed(1)}%` },
           {
@@ -458,6 +478,18 @@ export function Goals() {
     return built.totalValueBase - liabilities
   }, [data, selectedOwner, selectedCountry, base])
 
+  // Liabilities total for the current country — passed to AccumulationPhaseCard
+  const ukLiabilitiesTotal = useMemo(() => {
+    if (!data) return 0
+    const all = data.liabilities ?? []
+    const relevant = selectedCountry === 'India'
+      ? all.filter((l) => l.currency === 'INR')
+      : selectedCountry === 'UK'
+        ? all.filter((l) => l.currency !== 'INR')
+        : all
+    return totalLiabilitiesBase(relevant, base)
+  }, [data, selectedCountry, base])
+
   // India portfolio value converted to GBP (for goals that opt-in to include India)
   const indiaPortfolioValueGBP = useMemo(() => {
     if (!data) return 0
@@ -644,6 +676,7 @@ export function Goals() {
         {country === 'UK' && (
           <AccumulationPhaseCard
             currentNetWorth={currentPortfolioValue}
+            liabilitiesTotal={ukLiabilitiesTotal}
             firePlanner={firePlanner}
             fire={fire}
             abData={abData}
