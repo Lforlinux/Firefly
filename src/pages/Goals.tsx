@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Trash2 } from 'lucide-react'
+import { ChevronDown, Trash2 } from 'lucide-react'
 import { usePortfolio } from '@/context/AppContext'
 import { useUi } from '@/context/AppContext'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
@@ -96,6 +96,8 @@ function AccumulationPhaseCard({
   is3d: boolean
   base: string
 }) {
+  const [open, setOpen] = useState(false)
+
   const monthlyInvest = abData?.monthlyAvg ?? firePlanner.monthlyContribution
   const isLive = abData != null
 
@@ -152,19 +154,25 @@ function AccumulationPhaseCard({
   return (
     <Card tone="elevated" className={is3d ? 'border-indigo-400/30 bg-gradient-to-br from-indigo-900/55 to-slate-900/45' : ''}>
 
-      {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🌱</span>
-            <h3 className={`text-sm font-semibold ${is3d ? 'text-cyan-100' : ''}`}>Accumulation Phase</h3>
-          </div>
-          <p className={`mt-1 text-xs leading-relaxed ${is3d ? 'text-cyan-200/75' : 'text-slate-500'}`}>{phaseDesc}</p>
+      {/* ── Clickable header (always visible) ── */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🌱</span>
+          <h3 className={`text-sm font-semibold ${is3d ? 'text-cyan-100' : ''}`}>Accumulation Phase</h3>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${phaseBadge}`}>
+            {phase} · {pct.toFixed(0)}%
+          </span>
         </div>
-        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${phaseBadge}`}>
-          {phase} · {pct.toFixed(0)}%
-        </span>
-      </div>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* ── Expanded content ── */}
+      {open && <>
+      <p className={`mt-3 text-xs leading-relaxed ${is3d ? 'text-cyan-200/75' : 'text-slate-500'}`}>{phaseDesc}</p>
 
       {/* ── Stats grid ── */}
       <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
@@ -322,6 +330,7 @@ function AccumulationPhaseCard({
             : ' Update monthly savings in the planner above for a more accurate projection.'}
         </div>
       </div>
+      </>}
     </Card>
   )
 }
