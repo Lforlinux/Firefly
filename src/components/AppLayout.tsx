@@ -39,7 +39,7 @@ const NAV: NavItem[] = [
   { to: '/analytics', label: 'Analytics', icon: Brain },
   { to: '/import', label: 'Import', icon: Upload },
 ]
-const MOBILE_NAV = NAV.slice(0, 5)
+const MOBILE_NAV = NAV.slice(0, 4)
 
 export function AppLayout() {
   const { theme, toggleTheme, visualStyle, privacyMode, togglePrivacyMode, selectedOwner, setSelectedOwner } = useUi()
@@ -216,6 +216,15 @@ export function AppLayout() {
               <span className="truncate">{mobileLabel ?? label}</span>
             </NavLink>
           ))}
+          <button
+            type="button"
+            onClick={() => refresh.mutate()}
+            disabled={refresh.isPending}
+            className={mobileNavClass({ isActive: false })}
+          >
+            <RefreshCw className={`h-4 w-4 ${refresh.isPending ? 'animate-spin' : ''}`} />
+            <span>{refresh.isPending ? 'Syncing' : 'Sync'}</span>
+          </button>
           <NavLink to="/settings" className={mobileNavClass}>
             <Layers3 className="h-4 w-4" />
             <span>More</span>
