@@ -295,10 +295,10 @@ export function Overview() {
           />
           <Link to="/daily-movement" className="block transition hover:opacity-95">
             <KpiCard
-              label="Today's movement"
+              label={(() => { const d = new Date().getDay(); return d === 0 || d === 6 ? 'Last trading day' : "Today's movement" })()}
               value={dailyMovement == null ? '—' : money(dailyMovement)}
               tone={dailyMovement == null ? 'neutral' : dailyMovement >= 0 ? 'gain' : 'loss'}
-              sub={prevCloseAsOf ? `vs close ${new Date(prevCloseAsOf).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Refresh again tomorrow to see'}
+              sub={prevCloseAsOf ? `vs close ${new Date(prevCloseAsOf + (prevCloseAsOf.includes('T') ? '' : 'T12:00:00Z')).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Refresh again tomorrow to see'}
               icon={<TrendingUp className="h-4 w-4 text-slate-400" />}
             />
           </Link>

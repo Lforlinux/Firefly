@@ -8,7 +8,7 @@
   "crons": [
     {
       "path": "/api/refresh-prices",
-      "schedule": "30 21 * * 1-5"
+      "schedule": "30 21 * * *"
     }
   ],
   "rewrites": [
