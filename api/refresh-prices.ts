@@ -102,7 +102,7 @@ async function yahooPrice(ticker: string): Promise<{ price: number; currency: st
 // ---------------------------------------------------------------------------
 async function frankfurterRates(from: string, tos: string[]): Promise<Record<string, number>> {
   if (tos.length === 0) return {}
-  const url = `https://api.frankfurter.app/latest?from=${from}&to=${[...new Set(tos)].join(',')}`
+  const url = `https://api.frankfurter.dev/v1/latest?from=${from}&to=${[...new Set(tos)].join(',')}`
   const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
   if (!res.ok) throw new Error(`Frankfurter HTTP ${res.status}`)
   const body = await res.json()

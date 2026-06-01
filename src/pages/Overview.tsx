@@ -43,7 +43,7 @@ export function Overview() {
     try {
       const end = new Date().toISOString().slice(0, 10)
       const start = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-      const res = await fetch(`https://api.frankfurter.app/${start}..${end}?from=GBP&to=INR`)
+      const res = await fetch(`https://api.frankfurter.dev/v1/${start}..${end}?from=GBP&to=INR`)
       const data = await res.json()
       const points = Object.entries(data.rates as Record<string, { INR: number }>)
         .map(([date, r]) => ({ date, rate: r.INR }))
