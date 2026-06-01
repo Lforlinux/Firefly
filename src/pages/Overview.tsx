@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
-import { AlertCircle, CalendarClock, Flame, ShieldCheck, TrendingUp } from 'lucide-react'
+import { CartesianGrid, Line, LineChart, Cell, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { AlertCircle, CalendarClock, Flame, ShieldCheck, TrendingDown, TrendingUp, X } from 'lucide-react'
 import { usePortfolio, usePostDailyMovement, useUi } from '@/context/AppContext'
 import { buildPortfolio, byType, topN, convertToBase } from '@/utils/calculations'
 import { formatMoney, formatPercent, formatRelative } from '@/utils/format'
@@ -30,6 +30,28 @@ export function Overview() {
   const postDailyMovement = usePostDailyMovement()
   const { selectedOwner, privacyMode, visualStyle, selectedCountry, setSelectedCountry } = useUi()
   const autoMovementKeyRef = useRef('')
+
+  // ── GBP→INR history modal ──────────────────────────────────────────────────
+  const [fxModalOpen, setFxModalOpen] = useState(false)
+  const [fxHistory, setFxHistory] = useState<{ date: string; rate: number }[]>([])
+  const [fxLoading, setFxLoading] = useState(false)
+
+  const openFxModal = useCallback(async () => {
+    setFxModalOpen(true)
+    if (fxHistory.length > 0) return
+    setFxLoading(true)
+    try {
+      const end = new Date().toISOString().slice(0, 10)
+      const start = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      const res = await fetch(`https://api.frankfurter.app/${start}..${end}?from=GBP&to=INR`)
+      const data = await res.json()
+      const points = Object.entries(data.rates as Record<string, { INR: number }>)
+        .map(([date, r]) => ({ date, rate: r.INR }))
+        .sort((a, b) => a.date.localeCompare(b.date))
+      setFxHistory(points)
+    } catch { /* ignore */ }
+    finally { setFxLoading(false) }
+  }, [fxHistory.length])
 
   const view = useMemo(() => {
     if (!data) return null
@@ -302,11 +324,13 @@ export function Overview() {
               icon={<TrendingUp className="h-4 w-4 text-slate-400" />}
             />
           </Link>
-          <KpiCard
-            label="GBP → INR"
-            value={gbpToInr == null ? '—' : `₹${gbpToInr.toFixed(2)}`}
-            sub={gbpToInr == null ? 'Refresh prices to load FX' : '1 GBP in INR'}
-          />
+          <button type="button" onClick={openFxModal} className="block w-full text-left transition hover:opacity-90 active:scale-[0.98]">
+            <KpiCard
+              label="GBP → INR"
+              value={gbpToInr == null ? '—' : `₹${gbpToInr.toFixed(2)}`}
+              sub={gbpToInr == null ? 'Refresh prices to load FX' : 'Tap for 1-year chart'}
+            />
+          </button>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -463,6 +487,145 @@ export function Overview() {
           </Card>
         </div>
       </PageBody>
+      {/* ── GBP→INR 1-year history modal ───────────────────────────────────── */}
+      {fxModalOpen && (() => {
+        const minRate = fxHistory.length ? Math.min(...fxHistory.map((p) => p.rate)) : 0
+        const maxRate = fxHistory.length ? Math.max(...fxHistory.map((p) => p.rate)) : 0
+        const firstRate = fxHistory[0]?.rate ?? null
+        const lastRate  = fxHistory[fxHistory.length - 1]?.rate ?? null
+        const change    = firstRate && lastRate ? lastRate - firstRate : null
+        const changePct = firstRate && change != null ? (change / firstRate) * 100 : null
+        const isUp      = change != null && change >= 0
+
+        // Thin out to ~52 weekly points for a clean chart
+        const chartData = fxHistory.filter((_, i) => i % Math.max(1, Math.floor(fxHistory.length / 52)) === 0)
+
+        const fmtDate = (d: string) =>
+          new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
+            onClick={() => setFxModalOpen(false)}
+          >
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <div
+              className={[
+                'relative w-full sm:max-w-xl rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl',
+                is3d
+                  ? 'bg-indigo-950/95 border border-indigo-400/30 text-cyan-100'
+                  : 'bg-white dark:bg-slate-900',
+              ].join(' ')}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h2 className={`text-base font-semibold ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>
+                    GBP → INR · Past 12 months
+                  </h2>
+                  {change != null && changePct != null && (
+                    <p className={`mt-0.5 flex items-center gap-1.5 text-sm ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {isUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                      {isUp ? '+' : ''}{change.toFixed(2)} ({isUp ? '+' : ''}{changePct.toFixed(1)}%) over the year
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFxModalOpen(false)}
+                  className={`rounded-lg p-1.5 transition ${is3d ? 'hover:bg-indigo-800/60 text-cyan-300' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'}`}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Stats row */}
+              {fxHistory.length > 0 && (
+                <div className="mb-4 grid grid-cols-3 gap-2 text-center">
+                  {[
+                    { label: 'Low', value: `₹${minRate.toFixed(2)}` },
+                    { label: 'Now', value: `₹${(lastRate ?? 0).toFixed(2)}` },
+                    { label: 'High', value: `₹${maxRate.toFixed(2)}` },
+                  ].map(({ label, value }) => (
+                    <div key={label} className={`rounded-xl py-2 px-3 ${is3d ? 'bg-indigo-900/50' : 'bg-slate-50 dark:bg-slate-800/60'}`}>
+                      <div className={`text-xs ${is3d ? 'text-cyan-300/70' : 'text-slate-500'}`}>{label}</div>
+                      <div className={`text-sm font-semibold tabular-nums mt-0.5 ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Chart */}
+              {fxLoading ? (
+                <div className="flex h-48 items-center justify-center">
+                  <div className={`text-sm ${is3d ? 'text-cyan-300/70' : 'text-slate-400'}`}>Loading rates…</div>
+                </div>
+              ) : fxHistory.length === 0 ? (
+                <div className="flex h-48 items-center justify-center">
+                  <div className={`text-sm ${is3d ? 'text-cyan-300/70' : 'text-slate-400'}`}>Could not load data</div>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke={is3d ? 'rgba(99,102,241,0.2)' : '#e2e8f0'}
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={(d) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short' })}
+                      tick={{ fontSize: 11, fill: is3d ? '#a5b4fc' : '#94a3b8' }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={Math.floor(chartData.length / 6)}
+                    />
+                    <YAxis
+                      domain={['auto', 'auto']}
+                      tick={{ fontSize: 11, fill: is3d ? '#a5b4fc' : '#94a3b8' }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={42}
+                      tickFormatter={(v) => `₹${v.toFixed(0)}`}
+                    />
+                    <Tooltip
+                      formatter={(v: number) => [`₹${v.toFixed(2)}`, 'GBP→INR']}
+                      labelFormatter={fmtDate}
+                      contentStyle={
+                        is3d
+                          ? { background: 'rgba(15,23,42,0.9)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: 10, color: '#a5f3fc' }
+                          : { borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12 }
+                      }
+                    />
+                    {firstRate && (
+                      <ReferenceLine
+                        y={firstRate}
+                        stroke={is3d ? 'rgba(165,180,252,0.35)' : '#cbd5e1'}
+                        strokeDasharray="4 4"
+                      />
+                    )}
+                    <Line
+                      type="monotone"
+                      dataKey="rate"
+                      stroke={is3d ? '#22d3ee' : '#6366f1'}
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4, strokeWidth: 0 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+
+              {fxHistory.length > 0 && (
+                <p className={`mt-2 text-center text-[11px] ${is3d ? 'text-indigo-300/60' : 'text-slate-400'}`}>
+                  {fmtDate(fxHistory[0].date)} – {fmtDate(fxHistory[fxHistory.length - 1].date)} · Frankfurter.app
+                </p>
+              )}
+            </div>
+          </div>
+        )
+      })()}
     </>
   )
 }
