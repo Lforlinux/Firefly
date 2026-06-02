@@ -393,7 +393,7 @@ async function handleT212Sync(req: VercelRequest, res: VercelResponse) {
         .join(',')
       if (toList) {
         try {
-          const fxRes = await fetch(`https://api.frankfurter.app/latest?from=USD&to=GBP,${toList}`)
+          const fxRes = await fetch(`https://api.frankfurter.dev/v1/latest?from=USD&to=GBP,${toList}`)
           if (fxRes.ok) {
             const fxData: { rates?: Record<string, number>; date?: string } = await fxRes.json()
             const asOf = fxData.date || new Date().toISOString().slice(0, 10)
