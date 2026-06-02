@@ -25,10 +25,10 @@ import { AuthProvider } from './AuthContext'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60_000,   // 5 min — prices only update via nightly cron
-      gcTime:    15 * 60_000,  // keep cache warm for 15 min of inactivity
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+      staleTime: 5 * 60_000,   // 5 min — consider data fresh for 5 min
+      gcTime:    30 * 60_000,  // keep cache warm for 30 min of inactivity
+      refetchOnWindowFocus: true,  // re-fetch when user returns to tab
+      refetchOnReconnect: true,    // re-fetch when network comes back
       retry: 1,
     },
   },
@@ -177,6 +177,7 @@ export function usePortfolio() {
   return useQuery<Portfolio>({
     queryKey: ['portfolio'],
     queryFn: getPortfolio,
+    refetchInterval: 15 * 60_000, // poll every 15 min so cron updates appear automatically
   })
 }
 
