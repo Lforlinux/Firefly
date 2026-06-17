@@ -546,7 +546,8 @@ async function handleInvestEngineSync(req: VercelRequest, res: VercelResponse) {
 // AJ Bell CSV sync
 // ---------------------------------------------------------------------------
 const AJBELL_DESC_TO_TICKER: Array<[RegExp, string]> = [
-  [/spdr msci|all country world/i, 'ACWI.L'],
+  [/spdr msci|all country world/i,          'ACWI.L'],
+  [/semicond|ishares msci global semi/i,     'SEMI.L'],
 ]
 
 function ajbellDescToTicker(description: string): string | null {
