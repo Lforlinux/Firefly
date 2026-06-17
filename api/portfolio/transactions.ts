@@ -17,6 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 async function getTransactions(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) throw new Error('Unauthorized')
     const db = await getDbClient()
 
     const transactions = await db.query(
@@ -41,6 +42,7 @@ async function getTransactions(req: VercelRequest, res: VercelResponse) {
 async function createTransaction(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) throw new Error('Unauthorized')
     const { holding_id, transaction_type, shares, price, currency, transaction_date, notes } = req.body
 
     if (!holding_id || !transaction_type || shares === undefined || price === undefined || !transaction_date) {
@@ -79,6 +81,7 @@ async function createTransaction(req: VercelRequest, res: VercelResponse) {
 async function updateTransaction(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) throw new Error('Unauthorized')
     const { id, transaction_type, shares, price, currency, transaction_date, notes } = req.body
 
     if (!id) {
@@ -125,6 +128,7 @@ async function updateTransaction(req: VercelRequest, res: VercelResponse) {
 async function deleteTransaction(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    if (!user) throw new Error('Unauthorized')
     const { id } = req.body
 
     if (!id) {

@@ -318,25 +318,25 @@ async function flushHoldings(req: VercelRequest, res: VercelResponse) {
     for (const source of sources) {
       if (source === 'all') {
         const result = await db.query(`DELETE FROM holdings WHERE user_id = $1`, [auth.userId])
-        holdingsDeleted += result.rowCount ?? 0
+        holdingsDeleted += result.rows.length
       } else if (source === 'trading212') {
         const result = await db.query(
           `DELETE FROM holdings WHERE user_id = $1 AND LOWER(COALESCE(notes,'')) LIKE '%trading212%'`,
           [auth.userId]
         )
-        holdingsDeleted += result.rowCount ?? 0
+        holdingsDeleted += result.rows.length
       } else if (source === 'investengine') {
         const result = await db.query(
           `DELETE FROM holdings WHERE user_id = $1 AND LOWER(COALESCE(notes,'')) LIKE '%investengine%'`,
           [auth.userId]
         )
-        holdingsDeleted += result.rowCount ?? 0
+        holdingsDeleted += result.rows.length
       }
     }
 
     if (sources.includes('all')) {
       const result = await db.query(`DELETE FROM snapshots WHERE user_id = $1`, [auth.userId])
-      snapshotsDeleted += result.rowCount ?? 0
+      snapshotsDeleted += result.rows.length
     }
 
     return res.status(200).json({

@@ -316,7 +316,7 @@ async function handleT212Sync(req: VercelRequest, res: VercelResponse) {
       const hint = t212Res.status === 401
         ? ' — API key is invalid or expired. Regenerate it in T212 → Settings → API.'
         : ''
-      return res.status(502).json({ error: `T212 API ${t212Res.status}${hint}` })
+      return res.status(502).json({ error: `T212 API ${t212Res.status}${hint}`, detail: text })
     }
     positions = await t212Res.json()
   }
