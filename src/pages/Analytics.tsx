@@ -7,6 +7,7 @@ import { usePortfolio, useUi } from '@/context/AppContext'
 import { buildPortfolio } from '@/utils/calculations'
 import { totalLiabilitiesBase } from '@/utils/liabilities'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
+import { FireProjection } from '@/components/FireProjection'
 import { formatMoney, formatMoneyCompact } from '@/utils/format'
 import { fetchGoals } from '@/services/api'
 import type { FirePlannerData } from '@/services/api'
@@ -376,6 +377,15 @@ export function Analytics() {
               </div>
             )}
           </Card>
+        )}
+
+        {/* FIRE projection — combined UK + India, live-updating, no API call */}
+        {selectedCountry === 'UK' && (
+          <FireProjection
+            savedSoFar={view.combinedNetWorthGBP}
+            gbpToInr={view.gbpToInr}
+            is3d={is3d}
+          />
         )}
 
         {/* Monthly interest calculator — shown alongside combined portfolio */}
