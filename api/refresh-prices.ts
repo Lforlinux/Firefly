@@ -4,7 +4,9 @@ import { requireAuth, getDbClient } from '../lib/vercel-auth.js'
 /**
  * Price sources (in priority order):
  * 1. T212 REST API — if T212_API_KEY env var is set (recommended)
- * 2. Stooq — free, no key, but blocks Vercel IPs in practice
+ * 2. Yahoo Finance — free, no key; fallback for any ticker not priced above
+ *    (covers UK .L, India .NS, and US tickers — Stooq was tried here previously
+ *    but is unreliable from Vercel's IPs, so it has been dropped)
  *
  * FX rates: Frankfurter.app — always free, no key, works from any IP.
  */
@@ -28,7 +30,20 @@ async function fetchT212Prices(
     headers: { Authorization: apiKey },
     signal: AbortSignal.timeout(8000),
   })
-  if (!res.ok) throw new Error(`T212 API HTTP ${res.status}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    const rateRemaining = res.headers.get('x-ratelimit-remaining')
+    console.error(
+      `[refresh-prices] T212 API HTTP ${res.status}` +
+      (rateRemaining ? ` (rate-limit-remaining=${rateRemaining})` : '') +
+      `: ${body.slice(0, 500)}`
+    )
+    // 401 = bad/expired API key, 403 = key missing the "portfolio" scope,
+    // 429 = rate limited — surfacing the body distinguishes these from a
+    // generic IP block, which T212 only applies if an IP allow-list is
+    // configured on the key itself (Settings > API on trading212.com).
+    throw new Error(`T212 API HTTP ${res.status}: ${body.slice(0, 200)}`)
+  }
   const positions: any[] = await res.json()
 
   const out: Record<string, { price: number; currency: string; asOf: string }> = {}
@@ -49,36 +64,13 @@ async function fetchT212Prices(
 }
 
 // ---------------------------------------------------------------------------
-// Stooq fallback (works from residential/non-cloud IPs; often blocked on Vercel)
-// ---------------------------------------------------------------------------
-async function stooqPrice(ticker: string): Promise<{ price: number; currency: string } | { error: string }> {
-  const lookupTicker = TICKER_ALIASES[ticker.toUpperCase()] || ticker
-  const stooqSym = lookupTicker.endsWith('.L')
-    ? lookupTicker.replace(/\.L$/, '.UK').toLowerCase()
-    : `${lookupTicker.toLowerCase()}.us`
-  const isUK = stooqSym.endsWith('.uk')
-  try {
-    const url = `https://stooq.com/q/l/?s=${stooqSym}&f=s,c&e=json`
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
-    if (!res.ok) return { error: `HTTP ${res.status}` }
-    const text = await res.text()
-    let body: any
-    try { body = JSON.parse(text) } catch { return { error: `Bad JSON: ${text.slice(0, 80)}` } }
-    const item = body?.symbols?.[0]
-    const price = parseFloat(item?.close)
-    if (!Number.isFinite(price) || price <= 0) return { error: `No price in: ${JSON.stringify(item)}` }
-    return { price: isUK ? price / 100 : price, currency: isUK ? 'GBP' : 'USD' }
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : 'fetch failed' }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Yahoo Finance — works server-side for UK (.L) ETFs (GBp → GBP conversion)
+// Yahoo Finance — fallback for any ticker T212 didn't price (UK .L, India .NS,
+// US stocks). Handles GBp → GBP conversion for LSE-listed securities.
 // ---------------------------------------------------------------------------
 async function yahooPrice(ticker: string): Promise<{ price: number; currency: string } | { error: string }> {
+  const lookupTicker = TICKER_ALIASES[ticker.toUpperCase()] || ticker
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(lookupTicker)}?interval=1d&range=1d`
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
       signal: AbortSignal.timeout(6000),
@@ -240,23 +232,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const t212Key = process.env.T212_API_KEY
 
     if (t212Key) {
-      // Primary: T212 REST API — works from any IP, returns live prices for T212 holdings
+      // Primary: T212 REST API — returns live prices for T212 holdings
       try {
         const t212Prices = await fetchT212Prices(t212Key, tickers, asOf)
         Object.assign(pricesMap, t212Prices)
       } catch (e) {
-        errors.push({ error: `T212 API: ${e instanceof Error ? e.message : 'failed'}` } as any)
+        const msg = e instanceof Error ? e.message : 'failed'
+        console.error(`[refresh-prices] T212 API failed: ${msg}`)
+        errors.push({ error: `T212 API: ${msg}` } as any)
       }
     }
 
-    // Fallback for tickers not yet priced (InvestEngine ETFs, or when T212 key missing/invalid)
-    // UK (.L) ETFs / India NSE (.NS) → Yahoo Finance (supports both, returns correct currency)
-    // US stocks                       → Stooq
+    // Fallback for tickers not yet priced (InvestEngine ETFs, or when T212 key
+    // missing/invalid) — Yahoo Finance covers UK .L, India .NS, and US tickers.
     const unpricedTickers = tickers.filter((t) => !pricesMap[t])
     if (unpricedTickers.length > 0) {
       await Promise.all(unpricedTickers.map(async (ticker) => {
-        const useYahoo = ticker.endsWith('.L') || ticker.endsWith('.NS')
-        const q = useYahoo ? await yahooPrice(ticker) : await stooqPrice(ticker)
+        const q = await yahooPrice(ticker)
         if ('error' in q) errors.push({ ticker, error: q.error })
         else pricesMap[ticker] = { ...q, asOf }
       }))
@@ -360,8 +352,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const source = t212Key ? 'trading212' : 'stooq'
+    const source = t212Key ? 'trading212' : 'yahoo'
     const lastRefresh = new Date().toISOString()
+
+    console.log(
+      `[refresh-prices] ${isCron ? 'cron' : 'manual'} run: ` +
+      `${Object.keys(pricesMap).length}/${tickers.length} tickers priced, ${errors.length} errors` +
+      (errors.length ? ` — ${JSON.stringify(errors)}` : '')
+    )
+
+    // Persist this run so staleness/failures are checkable independent of the
+    // dashboard's "Last refresh" badge, which only reflects the freshest ticker
+    // and stays green even when other tickers silently stop updating.
+    try {
+      await db.query(
+        `INSERT INTO refresh_log (is_cron, tickers_total, tickers_refreshed, error_count, errors)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [!!isCron, tickers.length, Object.keys(pricesMap).length, errors.length, JSON.stringify(errors)]
+      )
+    } catch (e) {
+      console.error(`[refresh-prices] failed to write refresh_log: ${e instanceof Error ? e.message : 'failed'}`)
+    }
+
     return res.status(200).json({
       ok: true,
       source,

@@ -132,3 +132,19 @@ CREATE TABLE IF NOT EXISTS daily_movements (
   PRIMARY KEY (user_id, movement_date, owner)
 );
 CREATE INDEX IF NOT EXISTS idx_daily_movements_user_date ON daily_movements(user_id, movement_date DESC);
+
+-- Price refresh run history: makes silent cron failures checkable.
+-- (UI's "Last refresh" badge takes MAX(as_of) across price_cache, so it stays
+-- looking fresh even when a subset of tickers — e.g. all US stocks — silently
+-- stop updating. This table records every refresh-prices run so per-run error
+-- counts can be queried directly: SELECT * FROM refresh_log ORDER BY run_at DESC LIMIT 20;)
+CREATE TABLE IF NOT EXISTS refresh_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  is_cron BOOLEAN NOT NULL DEFAULT FALSE,
+  tickers_total INT NOT NULL,
+  tickers_refreshed INT NOT NULL,
+  error_count INT NOT NULL,
+  errors JSONB NOT NULL DEFAULT '[]'::jsonb
+);
+CREATE INDEX IF NOT EXISTS idx_refresh_log_run_at ON refresh_log(run_at DESC);
