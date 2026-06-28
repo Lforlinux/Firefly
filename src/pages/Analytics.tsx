@@ -221,6 +221,50 @@ export function Analytics() {
     return result
   }, [data])
 
+  // Actual contributions + market growth so far this UK financial year (Apr 6 – Apr 5).
+  // Feeds the FIRE projection's current-year row with real DB figures.
+  const thisFY = useMemo(() => {
+    if (!data || !view) return null
+    const fy = data.isa?.fy
+    if (!fy) return null
+
+    const fxToGBP = (ccy: string | undefined): number | null => {
+      const c = (ccy || 'GBP').toUpperCase()
+      if (c === 'GBP') return 1
+      const direct = data.fxRates?.[`${c}_GBP`]?.rate
+      if (Number.isFinite(direct) && direct! > 0) return Number(direct)
+      const inverse = data.fxRates?.[`GBP_${c}`]?.rate
+      if (Number.isFinite(inverse) && inverse! > 0) return 1 / Number(inverse)
+      return null
+    }
+
+    const matchesOwner = (notes: string) =>
+      selectedOwner === 'all' || new RegExp(`Owner:\\s*${selectedOwner}`, 'i').test(notes || '')
+
+    // Net new money invested this FY (buys − sells), converted to GBP
+    let invested = 0
+    for (const t of data.transactions || []) {
+      if (t.date < fy.start || t.date > fy.end) continue
+      if (t.side !== 'buy' && t.side !== 'sell') continue
+      if (!matchesOwner(t.notes || '')) continue
+      const fx = fxToGBP(t.currency)
+      if (fx == null) continue
+      const gbp = t.shares * t.price * fx
+      invested += t.side === 'buy' ? gbp : -gbp
+    }
+
+    // Actual market P&L this FY from daily movement tracking (already in GBP)
+    const movementOwner = selectedOwner === 'all' ? 'all' : selectedOwner
+    const growth = (data.dailyMovements || [])
+      .filter((m) => m.owner === movementOwner && m.date >= fy.start && m.date <= fy.end)
+      .reduce((a, m) => a + (Number(m.movementGBP) || 0), 0)
+
+    const endValue = view.combinedNetWorthGBP
+    const startValue = endValue - invested - growth
+    const ratePct = startValue > 0 ? (growth / startValue) * 100 : 0
+    return { invested, growth, ratePct, label: fy.label }
+  }, [data, view, selectedOwner])
+
   if (isLoading) return <Loading />
   if (error) return <PageBody><EmptyState title="Couldn't load analytics" body={(error as Error).message} /></PageBody>
   if (!view) return null
@@ -384,6 +428,7 @@ export function Analytics() {
           <FireProjection
             savedSoFar={view.combinedNetWorthGBP}
             firePlanner={goalsData?.firePlanner ?? null}
+            actualThisFY={thisFY}
             gbpToInr={view.gbpToInr}
             is3d={is3d}
           />

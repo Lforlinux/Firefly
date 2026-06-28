@@ -56,14 +56,24 @@ function readOverride(key: string): string | null {
   try { return localStorage.getItem(key) } catch { return null }
 }
 
+/** Actual figures for the current financial year, computed from the DB. */
+export interface ActualThisFY {
+  invested: number
+  growth: number
+  ratePct: number
+  label: string
+}
+
 export function FireProjection({
   savedSoFar,
   firePlanner,
+  actualThisFY,
   gbpToInr,
   is3d,
 }: {
   savedSoFar: number
   firePlanner: FirePlannerData | null
+  actualThisFY: ActualThisFY | null
   gbpToInr: number | null
   is3d: boolean
 }) {
@@ -131,12 +141,14 @@ export function FireProjection({
     let prevTier: Row['tier'] = tierOf(savedSoFar)
     let prevMillions = Math.floor(savedSoFar / 1_000_000)
 
-    // Base year — current portfolio value, no growth yet
+    // Base year — current portfolio value. Annual savings + growth are the
+    // ACTUAL figures so far this financial year (from the DB), not projections;
+    // year-end stays the live combined value (which already reflects them).
     rows.push({
       year: startYear,
-      annualSavings: 0,
-      beginning: savedSoFar,
-      growth: 0,
+      annualSavings: actualThisFY?.invested ?? 0,
+      beginning: savedSoFar - (actualThisFY?.invested ?? 0) - (actualThisFY?.growth ?? 0),
+      growth: actualThisFY?.growth ?? 0,
       end: savedSoFar,
       perMonthGain: 0,
       status: statusOf(savedSoFar),
@@ -197,7 +209,7 @@ export function FireProjection({
         fat: firstYearAtLeast(milestones.fat),
       },
     }
-  }, [savedSoFar, monthly, growthPct, monthlyCost, incrementPct])
+  }, [savedSoFar, monthly, growthPct, monthlyCost, incrementPct, actualThisFY])
 
   const inr = (gbp: number) => (gbpToInr != null ? formatMoneyCompact(gbp * gbpToInr, 'INR') : null)
 
@@ -285,6 +297,22 @@ export function FireProjection({
         Annual expense {formatMoney(model.annualExpense, 'GBP')} (monthly cost × 12) · FIRE targets are multiples of it
       </div>
 
+      {/* Actuals so far this financial year (from the DB) */}
+      {actualThisFY && (actualThisFY.invested !== 0 || actualThisFY.growth !== 0) && (
+        <div className={`mt-3 rounded-xl px-3 py-2.5 text-xs ${is3d ? 'bg-white/5 text-cyan-100/90' : 'bg-slate-50 text-slate-600 dark:bg-slate-800/50 dark:text-slate-300'}`}>
+          <span className="font-medium">This financial year ({actualThisFY.label}) so far:</span>{' '}
+          invested <span className="font-semibold tabular-nums">{formatMoney(actualThisFY.invested, 'GBP')}</span> ·{' '}
+          market growth{' '}
+          <span className={`font-semibold tabular-nums ${actualThisFY.growth < 0 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
+            {formatMoney(actualThisFY.growth, 'GBP')}
+          </span>{' '}
+          <span className={actualThisFY.ratePct < 0 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}>
+            ({actualThisFY.ratePct >= 0 ? '+' : ''}{actualThisFY.ratePct.toFixed(1)}% actual)
+          </span>
+          <span className={`ml-1 ${is3d ? 'text-indigo-200/50' : 'text-slate-400'}`}>— shown in the {new Date().getFullYear()} row</span>
+        </div>
+      )}
+
       {/* Year-by-year table */}
       <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
         <table className="w-full min-w-[760px] text-sm">
@@ -314,10 +342,10 @@ export function FireProjection({
                     )}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-500">
-                    {r.annualSavings > 0 ? formatMoney(r.annualSavings, 'GBP') : '—'}
+                    {r.annualSavings !== 0 ? formatMoney(r.annualSavings, 'GBP') : '—'}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
-                    {r.growth > 0 ? formatMoney(r.growth, 'GBP') : '—'}
+                  <td className={`px-3 py-2 text-right tabular-nums ${r.growth < 0 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                    {r.growth !== 0 ? formatMoney(r.growth, 'GBP') : '—'}
                   </td>
                   <td className="px-3 py-2 text-right font-medium tabular-nums text-slate-900 dark:text-slate-100">
                     {formatMoney(r.end, 'GBP')}
