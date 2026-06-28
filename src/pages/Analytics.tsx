@@ -383,6 +383,7 @@ export function Analytics() {
         {selectedCountry === 'UK' && (
           <FireProjection
             savedSoFar={view.combinedNetWorthGBP}
+            firePlanner={goalsData?.firePlanner ?? null}
             gbpToInr={view.gbpToInr}
             is3d={is3d}
           />

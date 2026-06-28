@@ -6,39 +6,36 @@
  * in by the Analytics page, so the whole table re-computes automatically every
  * time the portfolio value changes — no API call, no extra Vercel function.
  *
- * Assumptions (editable, persisted to localStorage like the BoE/RBI inputs):
- *   - Monthly contribution, grown each year by an annual increment %
- *   - Annual growth rate applied to (year-start balance + that year's savings)
- *   - Monthly cost → annual expense → FIRE multiples (5× / 25× / 33.3× / 50×)
+ * Assumptions are SEEDED from the /goals FIRE planner (single source of truth,
+ * so the accumulation target matches the Goals page) but stay editable here for
+ * what-if scenarios. An edited field is persisted to localStorage as an override
+ * and from then on wins over the planner value until cleared.
+ *   - Monthly savings  ← planner.monthlyContribution
+ *   - Growth rate (%)  ← planner.annualReturnPct
+ *   - Monthly cost     ← planner.monthlyExpense → annual expense → FIRE multiples
+ *                        (Accumulation 5× / Lean 25× / Standard 33.3× / Fat 50×)
+ *   - Yearly increment is local-only (the planner has no equivalent field)
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Flame } from 'lucide-react'
 import { Card } from '@/components/ui'
 import { formatMoney, formatMoneyCompact } from '@/utils/format'
+import type { FirePlannerData } from '@/services/api'
 
+// v2 keys: the original v1 keys hold stale neutral defaults that the first
+// deploy persisted, which would defeat planner-seeding. v2 starts empty so an
+// absent key means "not overridden → use the planner value".
 const LS = {
-  monthly: 'firefly.fire.monthlyContribution',
-  growth: 'firefly.fire.growthPct',
-  cost: 'firefly.fire.monthlyCost',
-  increment: 'firefly.fire.incrementPct',
+  monthly: 'firefly.fire.v2.monthly',
+  growth: 'firefly.fire.v2.growth',
+  cost: 'firefly.fire.v2.cost',
+  increment: 'firefly.fire.v2.increment',
 }
 
-// Neutral placeholder assumptions — the user enters their own figures, which
-// then persist to localStorage. Kept generic so no personal financial data
-// lives in the repo.
+// Fallbacks used only when the planner hasn't loaded / isn't set yet.
 const DEF = { monthly: 1000, growth: 7, cost: 2000, increment: 5 }
 
 const PROJECTION_YEARS = 30
-
-function readNum(key: string, fallback: number): string {
-  try {
-    const raw = localStorage.getItem(key)
-    if (raw == null) return String(fallback)
-    return String(JSON.parse(raw))
-  } catch {
-    return String(fallback)
-  }
-}
 
 type Row = {
   year: number
@@ -55,29 +52,48 @@ type Row = {
   badge: string | null
 }
 
+function readOverride(key: string): string | null {
+  try { return localStorage.getItem(key) } catch { return null }
+}
+
 export function FireProjection({
   savedSoFar,
+  firePlanner,
   gbpToInr,
   is3d,
 }: {
   savedSoFar: number
+  firePlanner: FirePlannerData | null
   gbpToInr: number | null
   is3d: boolean
 }) {
-  const [monthlyInput, setMonthlyInput] = useState(() => readNum(LS.monthly, DEF.monthly))
-  const [growthInput, setGrowthInput] = useState(() => readNum(LS.growth, DEF.growth))
-  const [costInput, setCostInput] = useState(() => readNum(LS.cost, DEF.cost))
-  const [incInput, setIncInput] = useState(() => readNum(LS.increment, DEF.increment))
+  // null override = "follow the planner"; a string = user has edited this field
+  const [monthlyOv, setMonthlyOv] = useState<string | null>(() => readOverride(LS.monthly))
+  const [growthOv, setGrowthOv] = useState<string | null>(() => readOverride(LS.growth))
+  const [costOv, setCostOv] = useState<string | null>(() => readOverride(LS.cost))
+  const [incInput, setIncInput] = useState<string>(() => readOverride(LS.increment) ?? String(DEF.increment))
+
+  // Planner-seeded display values (override wins; else planner; else fallback)
+  const monthlyInput = monthlyOv ?? String(firePlanner?.monthlyContribution ?? DEF.monthly)
+  const growthInput = growthOv ?? String(firePlanner?.annualReturnPct ?? DEF.growth)
+  const costInput = costOv ?? String(firePlanner?.monthlyExpense ?? DEF.cost)
 
   const monthly = Math.max(0, Number(monthlyInput) || 0)
   const growthPct = Math.max(0, Number(growthInput) || 0)
   const monthlyCost = Math.max(0, Number(costInput) || 0)
   const incrementPct = Math.max(0, Number(incInput) || 0)
 
-  useEffect(() => { localStorage.setItem(LS.monthly, JSON.stringify(monthly)) }, [monthly])
-  useEffect(() => { localStorage.setItem(LS.growth, JSON.stringify(growthPct)) }, [growthPct])
-  useEffect(() => { localStorage.setItem(LS.cost, JSON.stringify(monthlyCost)) }, [monthlyCost])
-  useEffect(() => { localStorage.setItem(LS.increment, JSON.stringify(incrementPct)) }, [incrementPct])
+  const setOverride = (
+    setter: (v: string) => void,
+    key: string,
+  ) => (v: string) => {
+    setter(v)
+    try { localStorage.setItem(key, v) } catch { /* ignore */ }
+  }
+  const onMonthly = setOverride(setMonthlyOv, LS.monthly)
+  const onGrowth = setOverride(setGrowthOv, LS.growth)
+  const onCost = setOverride(setCostOv, LS.cost)
+  useEffect(() => { try { localStorage.setItem(LS.increment, incInput) } catch { /* ignore */ } }, [incInput])
 
   const model = useMemo(() => {
     const annualExpense = monthlyCost * 12
@@ -94,12 +110,15 @@ export function FireProjection({
       : v >= milestones.lean ? 'lean'
       : 'accumulation'
 
+    // Phase rule: always report Accumulation Phase % until it hits 100%, only
+    // THEN report Lean FIRE % (measured across the Accumulation→Lean band), then
+    // multiples of each higher tier. Matches the /goals Accumulation card.
     const statusOf = (v: number): string => {
       if (milestones.fat <= 0) return '—'
       if (v < milestones.accumulation)
-        return `${((v / milestones.accumulation) * 100).toFixed(0)}% of Accumulation`
+        return `${((v / milestones.accumulation) * 100).toFixed(0)}% of Accumulation Phase`
       if (v < milestones.lean)
-        return `${(((v - milestones.accumulation) / (milestones.lean - milestones.accumulation)) * 100).toFixed(0)}% to Lean FIRE`
+        return `${(((v - milestones.accumulation) / (milestones.lean - milestones.accumulation)) * 100).toFixed(0)}% of Lean FIRE`
       if (v < milestones.standard) return `${(v / milestones.lean).toFixed(1)}× Lean FIRE`
       if (v < milestones.fat) return `${(v / milestones.standard).toFixed(1)}× Standard FIRE`
       return `${(v / milestones.fat).toFixed(1)}× Fat FIRE`
@@ -215,24 +234,27 @@ export function FireProjection({
         </div>
       </div>
 
-      {/* Editable assumptions */}
+      {/* Editable assumptions — seeded from the /goals FIRE planner */}
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <label className="flex flex-col gap-1">
           <span className={`text-[11px] ${labelCls}`}>Monthly savings (£)</span>
-          <input type="number" min="0" step="50" value={monthlyInput} onChange={(e) => setMonthlyInput(e.target.value)} className={inputCls} />
+          <input type="number" min="0" step="50" value={monthlyInput} onChange={(e) => onMonthly(e.target.value)} className={inputCls} />
         </label>
         <label className="flex flex-col gap-1">
           <span className={`text-[11px] ${labelCls}`}>Growth rate (%/yr)</span>
-          <input type="number" min="0" step="0.5" value={growthInput} onChange={(e) => setGrowthInput(e.target.value)} className={inputCls} />
+          <input type="number" min="0" step="0.5" value={growthInput} onChange={(e) => onGrowth(e.target.value)} className={inputCls} />
         </label>
         <label className="flex flex-col gap-1">
           <span className={`text-[11px] ${labelCls}`}>Monthly cost (£)</span>
-          <input type="number" min="0" step="50" value={costInput} onChange={(e) => setCostInput(e.target.value)} className={inputCls} />
+          <input type="number" min="0" step="50" value={costInput} onChange={(e) => onCost(e.target.value)} className={inputCls} />
         </label>
         <label className="flex flex-col gap-1">
           <span className={`text-[11px] ${labelCls}`}>Yearly increment (%)</span>
           <input type="number" min="0" step="1" value={incInput} onChange={(e) => setIncInput(e.target.value)} className={inputCls} />
         </label>
+      </div>
+      <div className={`mt-1.5 text-[11px] ${is3d ? 'text-indigo-200/60' : 'text-slate-400'}`}>
+        Savings, growth &amp; monthly cost seeded from your <a href="/goals" className="underline underline-offset-2">FIRE planner</a> · edit here to model what-ifs
       </div>
 
       {model.annualExpense <= 0 && (
