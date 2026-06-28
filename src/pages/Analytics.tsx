@@ -241,7 +241,8 @@ export function Analytics() {
     const matchesOwner = (notes: string) =>
       selectedOwner === 'all' || new RegExp(`Owner:\\s*${selectedOwner}`, 'i').test(notes || '')
 
-    // Net new money invested this FY (buys − sells), converted to GBP
+    // Net new money invested this FY (buys − sells), converted to GBP.
+    // Source 1: transactions table — covers InvestEngine (ISA + GIA) and manual.
     let invested = 0
     for (const t of data.transactions || []) {
       if (t.date < fy.start || t.date > fy.end) continue
@@ -251,6 +252,18 @@ export function Analytics() {
       if (fx == null) continue
       const gbp = t.shares * t.price * fx
       invested += t.side === 'buy' ? gbp : -gbp
+    }
+
+    // Source 2: isa_deposits (via isa.byOwner, already FY-scoped and transfer-
+    // excluded) — covers T212 & AJ Bell, which never reach the transactions
+    // table. Skip 'investengine' here: it's derived from the same ISA buys
+    // already summed above, so counting it would double-count.
+    for (const [owner, sources] of Object.entries(data.isa?.byOwner ?? {})) {
+      if (selectedOwner !== 'all' && owner.toLowerCase() !== selectedOwner.toLowerCase()) continue
+      for (const [source, amount] of Object.entries(sources)) {
+        if (source.toLowerCase() === 'investengine') continue
+        invested += Number(amount) || 0
+      }
     }
 
     // Actual market P&L this FY from daily movement tracking (already in GBP)
