@@ -126,13 +126,16 @@ async function saveDailyMovements(
   fxMap: Record<string, number>,
   today: string,
 ) {
+  // Include cash holdings too — for a true wealth value, cash in investment
+  // accounts (Plum, broker cash) counts. They have no price feed, so they're
+  // valued at avg_cost below and never contribute to the daily movement.
   const hRes = await db.query(
-    `SELECT h.ticker, h.shares, h.currency, h.notes
+    `SELECT h.ticker, h.shares, h.currency, h.notes, h.avg_cost
      FROM holdings h
-     WHERE h.user_id = $1 AND h.type != 'cash' AND h.ticker NOT LIKE 'CASH:%'`,
+     WHERE h.user_id = $1`,
     [userId]
   )
-  const holdings: { ticker: string; shares: number; currency: string; notes: string | null }[] = hRes.rows || []
+  const holdings: { ticker: string; shares: number; currency: string; notes: string | null; avg_cost: number }[] = hRes.rows || []
   if (holdings.length === 0) return
 
   const priceRes = await db.query(`SELECT ticker, price, currency, prev_close FROM price_cache`)
@@ -157,18 +160,28 @@ async function saveDailyMovements(
 
     let movement = 0
     let portfolioValue = 0
-    let hasPrev = false
 
     for (const h of filtered) {
       const q = priceMap.get(h.ticker)
-      if (!q || q.prevClose == null) continue
-      hasPrev = true
-      const fx = toBase(1, q.currency, fxMap, base)
-      movement += h.shares * (q.price - q.prevClose) * fx
-      portfolioValue += h.shares * q.price * fx
+
+      // Portfolio value counts EVERY holding: live price when available, else
+      // cost basis. Assets with no daily price feed (Indian MFs, EPF) have a
+      // price but no prev_close — they were being dropped, undervaluing the
+      // total by ~their full value. prev_close is only needed for the movement.
+      let unitPrice = q && Number.isFinite(q.price) && q.price > 0 ? q.price : Number(h.avg_cost)
+      let valueCcy = q?.currency || h.currency || base
+      if (valueCcy === 'GBX') { unitPrice = unitPrice / 100; valueCcy = 'GBP' } // pence → GBP
+      if (Number.isFinite(unitPrice) && unitPrice > 0) {
+        portfolioValue += h.shares * unitPrice * toBase(1, valueCcy, fxMap, base)
+      }
+
+      // Daily movement only for holdings that have a previous close to compare.
+      if (q && q.prevClose != null) {
+        movement += h.shares * (q.price - q.prevClose) * toBase(1, q.currency, fxMap, base)
+      }
     }
 
-    if (!hasPrev) continue
+    if (portfolioValue <= 0) continue
 
     await db.query(
       `INSERT INTO daily_movements (user_id, movement_date, owner, movement_gbp, portfolio_value_gbp)
