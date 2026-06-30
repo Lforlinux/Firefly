@@ -78,6 +78,20 @@ export interface DbLiabilityItem {
   notes: string
 }
 
+/** Price-refresh health, derived from the refresh_log table. */
+export interface RefreshHealth {
+  /** ISO timestamp of the most recent refresh-prices run, or null if none logged. */
+  lastRun: string | null
+  /** Hours since lastRun. */
+  ageHours: number | null
+  /** Error count from the most recent run (includes expected .MF/.PF misses). */
+  lastErrorCount: number
+  /** Tradeable held tickers whose price is stale (>2 days) — the real alert signal. */
+  staleTickers: string[]
+  /** False when a run is overdue (>26h) or a tradeable ticker is stale. */
+  ok: boolean
+}
+
 /** Shape returned by GET /api/portfolio — data.json + data.cache.json merged. */
 export interface Portfolio extends PriceCache {
   holdings: Holding[]
@@ -87,6 +101,7 @@ export interface Portfolio extends PriceCache {
   isa?: IsaSummary
   dailyMovements: DailyMovement[]
   liabilities: DbLiabilityItem[]
+  refreshHealth?: RefreshHealth | null
 }
 
 /** UI-derived: a holding plus its computed price/value/G&L in base currency. */

@@ -113,6 +113,43 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
     ].filter((t) => Number.isFinite(t))
     const lastRefresh = refreshTimes.length ? new Date(Math.max(...refreshTimes)).toISOString() : null
 
+    // Refresh health: surface silent cron failures. Unhealthy when no run in the
+    // last ~26h (cron is daily) OR a *tradeable* held ticker has a stale price.
+    // Excludes .MF/.PF (no price source supports them — always "stale" by design).
+    let refreshHealth: {
+      lastRun: string | null; ageHours: number | null
+      lastErrorCount: number; staleTickers: string[]; ok: boolean
+    } | null = null
+    try {
+      const hr = await db.query(
+        `SELECT
+           (SELECT row_to_json(r) FROM (
+              SELECT run_at, error_count FROM refresh_log ORDER BY run_at DESC LIMIT 1
+            ) r) AS last_run,
+           (SELECT COALESCE(json_agg(p.ticker ORDER BY p.ticker), '[]'::json)
+              FROM price_cache p
+              WHERE p.as_of < NOW() - INTERVAL '2 days'
+                AND p.ticker !~ '\\.(MF|PF)$'
+                AND p.ticker NOT LIKE 'CASH:%'
+                AND EXISTS (SELECT 1 FROM holdings h WHERE h.ticker = p.ticker AND h.user_id = $1)
+           ) AS stale_tradeable`,
+        [auth.userId]
+      )
+      const row = hr.rows?.[0] || {}
+      const lastRun = row.last_run || null
+      const stale: string[] = row.stale_tradeable || []
+      const ageHours = lastRun?.run_at ? (Date.now() - new Date(lastRun.run_at).getTime()) / 3.6e6 : null
+      refreshHealth = {
+        lastRun: lastRun?.run_at ? new Date(lastRun.run_at).toISOString() : null,
+        ageHours: ageHours != null ? Math.round(ageHours * 10) / 10 : null,
+        lastErrorCount: Number(lastRun?.error_count ?? 0),
+        staleTickers: stale,
+        ok: (ageHours == null || ageHours <= 26) && stale.length === 0,
+      }
+    } catch {
+      refreshHealth = null // refresh_log not present / query failed — never break the portfolio
+    }
+
     const settings = settingsRow.rows?.[0]
       ? {
           baseCurrency: settingsRow.rows[0].base_currency || 'GBP',
@@ -192,6 +229,7 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
       prices: pricesMap,
       fxRates: fxMap,
       lastRefresh,
+      refreshHealth,
       isa: { fy: { start: fyStart, end: fyEnd, label: fyLabel }, byOwner: isaByOwner, transferByOwner: isaTransferByOwner },
       dailyMovements: normalizedMovements,
       liabilities: normalizedLiabilities,

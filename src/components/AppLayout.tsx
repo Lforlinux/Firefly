@@ -11,6 +11,7 @@ import {
   Layers3,
   LogOut,
   Moon,
+  AlertTriangle,
   PieChart,
   PlusCircle,
   RefreshCw,
@@ -146,6 +147,23 @@ export function AppLayout() {
             <div className={`ff-refresh-meta px-1 pt-2 text-xs ${visualStyle === 'premium3d' ? 'text-cyan-100/95' : 'text-slate-500'}`}>
               Last refresh: {formatRelative(portfolio?.lastRefresh || null)}
             </div>
+            {portfolio?.refreshHealth && !portfolio.refreshHealth.ok && (
+              <div
+                className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-300/70 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700 dark:border-amber-600/40 dark:bg-amber-950/40 dark:text-amber-300"
+                title={
+                  portfolio.refreshHealth.staleTickers.length > 0
+                    ? `Stale prices: ${portfolio.refreshHealth.staleTickers.join(', ')}`
+                    : 'The daily price refresh has not run recently'
+                }
+              >
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {portfolio.refreshHealth.staleTickers.length > 0
+                    ? `${portfolio.refreshHealth.staleTickers.length} holding price${portfolio.refreshHealth.staleTickers.length === 1 ? '' : 's'} stale${portfolio.refreshHealth.ageHours != null && portfolio.refreshHealth.ageHours > 26 ? ` · last run ${Math.round(portfolio.refreshHealth.ageHours)}h ago` : ''}`
+                    : `Price refresh overdue${portfolio.refreshHealth.ageHours != null ? ` (${Math.round(portfolio.refreshHealth.ageHours)}h)` : ''}`}
+                </span>
+              </div>
+            )}
           </div>
 
           {owners.length > 0 && (
