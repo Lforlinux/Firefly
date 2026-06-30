@@ -477,6 +477,9 @@ export function Goals() {
   }
 
   const [draft, setDraft] = useState({ title: '', targetAmount: '' })
+  // Goals-list debt toggle: when off, add liabilities back so progress reflects
+  // gross portfolio value (currentPortfolioValue already nets debt out).
+  const [goalsIncludeDebt, setGoalsIncludeDebt] = useState(true)
 
   function addGoal() {
     const targetAmount = Number(draft.targetAmount)
@@ -748,8 +751,27 @@ export function Goals() {
           <EmptyState title="No goals yet" body="Create your first goal to monitor progress from dashboard previews." />
         ) : (
           <Card tone="elevated" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Goals progress</h3>
+              <button
+                type="button"
+                onClick={() => setGoalsIncludeDebt((d) => !d)}
+                className={[
+                  'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                  goalsIncludeDebt
+                    ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-700/50 dark:bg-rose-950/40 dark:text-rose-300'
+                    : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900',
+                ].join(' ')}
+                title={goalsIncludeDebt ? 'Progress is net of liabilities — tap to exclude debt' : 'Progress ignores liabilities — tap to include debt'}
+              >
+                <span className={['h-1.5 w-1.5 rounded-full', goalsIncludeDebt ? 'bg-rose-500' : 'bg-slate-400'].join(' ')} />
+                {goalsIncludeDebt ? 'Debt on' : 'Debt off'}
+              </button>
+            </div>
             {goals.map((g) => {
-              const effectiveValue = currentPortfolioValue + (g.includeIndia ? indiaPortfolioValueGBP : 0)
+              const effectiveValue = currentPortfolioValue
+                + (goalsIncludeDebt ? 0 : ukLiabilitiesTotal)
+                + (g.includeIndia ? indiaPortfolioValueGBP : 0)
               const progress = g.targetAmount <= 0 ? 0 : Math.min((effectiveValue / g.targetAmount) * 100, 100)
               return (
                 <div key={g.id}>
