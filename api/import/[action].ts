@@ -92,9 +92,19 @@ async function handleCommit(req: VercelRequest, res: VercelResponse) {
         // Snapshot rows (e.g. t212-pos-NVDA-1) represent current state, not a transaction to accumulate.
         const isSnapshot = sourceId.startsWith('t212-pos-')
 
+        // Owner-scoped match: the same ticker can be held by two different owners
+        // (or via two providers). Matching by ticker alone let one owner's buy
+        // land on the other owner's holding — so scope the lookup to the owner
+        // tagged in the notes, preferring a holding from the same import source.
+        const ownerMatch = String(tx.notes || '').match(/Owner:\s*([A-Za-z][A-Za-z0-9 _'-]*?)\s*(?:\||$)/i)
+        const owner = ownerMatch ? ownerMatch[1].trim() : null
         const existing = await db.query(
-          `SELECT id FROM holdings WHERE user_id = $1 AND ticker = $2 LIMIT 1`,
-          [auth.userId, ticker]
+          `SELECT id FROM holdings
+           WHERE user_id = $1 AND ticker = $2
+             AND ($3::text IS NULL OR notes ILIKE '%Owner: ' || $3 || '%')
+           ORDER BY (notes ILIKE '%' || $4 || '%') DESC, id
+           LIMIT 1`,
+          [auth.userId, ticker, owner, source]
         )
         let holdingId = existing.rows?.[0]?.id
 

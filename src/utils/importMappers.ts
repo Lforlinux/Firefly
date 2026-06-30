@@ -143,9 +143,13 @@ function mapInvestEngineToTransaction(
       return new Error(`Invalid trade date: ${row['Trade Date/Time']}`)
     }
 
+    // Honour the statement's Buy/Sell column — never assume 'buy', or a Sell
+    // (e.g. an iShares Physical Gold disposal) gets booked as a phantom holding.
+    const txType: 'buy' | 'sell' = /sell/i.test(row['Transaction Type'] || '') ? 'sell' : 'buy'
+
     return {
       date: tradeDate,
-      type: 'buy',
+      type: txType,
       name: securityName,
       isin,
       quantity,
@@ -154,7 +158,7 @@ function mapInvestEngineToTransaction(
       total,
       totalCurrency: 'GBP',
       source: 'investengine',
-      sourceId: `ie-${tradeDate}-${securityName.substring(0, 3).toLowerCase()}-${quantity}`,
+      sourceId: `ie-${tradeDate}-${securityName.substring(0, 3).toLowerCase()}-${txType}-${quantity}`,
       notes: `Settlement: ${row['Settlement Date']}`,
     }
   } catch (e) {
