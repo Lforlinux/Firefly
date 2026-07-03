@@ -170,6 +170,7 @@ export function Analytics() {
       netWorthInr,
       gbpToInr,
       liabilities,
+      grossPortfolioValue: built.totalValueBase,
       fireTarget,
       fireProgress,
       goalCoverage,
@@ -548,7 +549,7 @@ export function Analytics() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {view.providerBreakdown.map((row) => {
-                    const pct = view.netWorth > 0 ? (row.valueGBP / view.netWorth) * 100 : 0
+                    const pct = view.grossPortfolioValue > 0 ? (row.valueGBP / view.grossPortfolioValue) * 100 : 0
                     return (
                       <tr key={`${row.owner}-${row.provider}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                         <td className="px-3 py-2.5 font-medium text-slate-800 dark:text-slate-200">{row.owner}</td>
@@ -565,7 +566,7 @@ export function Analytics() {
                   <tr className="border-t-2 border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60">
                     <td colSpan={2} className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Total</td>
                     <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-                      {formatMoney(view.netWorth, view.base)}
+                      {formatMoney(view.grossPortfolioValue, view.base)}
                     </td>
                     <td className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">100%</td>
                   </tr>

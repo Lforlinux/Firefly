@@ -153,6 +153,8 @@ async function saveDailyMovements(
     if (o) owners.add(o)
   }
 
+  let allPortfolioValue = 0
+
   for (const owner of owners) {
     const filtered = owner === 'all'
       ? holdings
@@ -183,6 +185,8 @@ async function saveDailyMovements(
 
     if (portfolioValue <= 0) continue
 
+    if (owner === 'all') allPortfolioValue = portfolioValue
+
     await db.query(
       `INSERT INTO daily_movements (user_id, movement_date, owner, movement_gbp, portfolio_value_gbp)
        VALUES ($1,$2,$3,$4,$5)
@@ -190,6 +194,26 @@ async function saveDailyMovements(
        DO UPDATE SET movement_gbp = EXCLUDED.movement_gbp, portfolio_value_gbp = EXCLUDED.portfolio_value_gbp`,
       [userId, today, owner, movement, portfolioValue]
     )
+  }
+
+  // Save goal progress snapshot for the combined portfolio
+  if (allPortfolioValue > 0) {
+    const goalsRes = await db.query(
+      `SELECT title, target_amount FROM goals WHERE user_id = $1`,
+      [userId]
+    )
+    for (const g of goalsRes.rows || []) {
+      const target = Number(g.target_amount)
+      if (target <= 0) continue
+      const pct = (allPortfolioValue / target) * 100
+      await db.query(
+        `INSERT INTO daily_goal_snapshots (user_id, snapshot_date, goal_title, target_amount, portfolio_gbp, progress_pct)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (user_id, snapshot_date, goal_title)
+         DO UPDATE SET target_amount = EXCLUDED.target_amount, portfolio_gbp = EXCLUDED.portfolio_gbp, progress_pct = EXCLUDED.progress_pct`,
+        [userId, today, g.title, target, allPortfolioValue, pct]
+      )
+    }
   }
 }
 

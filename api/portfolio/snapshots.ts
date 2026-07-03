@@ -32,6 +32,27 @@ async function upsertMovement(req: VercelRequest, res: VercelResponse) {
        DO UPDATE SET movement_gbp = EXCLUDED.movement_gbp, portfolio_value_gbp = EXCLUDED.portfolio_value_gbp`,
       [user.userId, date, owner, movementGBP, portfolioValueGBP ?? null]
     )
+
+    // When the combined portfolio value is known, snapshot goal progress too
+    if (owner === 'all' && portfolioValueGBP > 0) {
+      const goalsRes = await db.query(
+        `SELECT title, target_amount FROM goals WHERE user_id = $1`,
+        [user.userId]
+      )
+      for (const g of goalsRes.rows || []) {
+        const target = Number(g.target_amount)
+        if (target <= 0) continue
+        const pct = (portfolioValueGBP / target) * 100
+        await db.query(
+          `INSERT INTO daily_goal_snapshots (user_id, snapshot_date, goal_title, target_amount, portfolio_gbp, progress_pct)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           ON CONFLICT (user_id, snapshot_date, goal_title)
+           DO UPDATE SET target_amount = EXCLUDED.target_amount, portfolio_gbp = EXCLUDED.portfolio_gbp, progress_pct = EXCLUDED.progress_pct`,
+          [user.userId, date, g.title, target, portfolioValueGBP, pct]
+        )
+      }
+    }
+
     return res.status(200).json({ ok: true })
   } catch (err) {
     console.error('Error saving movement:', err)
