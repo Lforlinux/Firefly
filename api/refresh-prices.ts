@@ -90,6 +90,47 @@ async function yahooPrice(ticker: string): Promise<{ price: number; currency: st
 }
 
 // ---------------------------------------------------------------------------
+// Yahoo Finance daily history — used to backfill missed trading days so a gap
+// in cron runs reconstructs one real bar per day instead of collapsing the
+// whole gap into a single oversized movement. Returns closes oldest → newest,
+// already normalised to major units (GBp → GBP).
+// ---------------------------------------------------------------------------
+async function yahooDailyHistory(
+  ticker: string,
+  fromDate: string,
+  toDate: string,
+): Promise<{ closes: { date: string; close: number }[]; currency: string } | { error: string }> {
+  const lookupTicker = TICKER_ALIASES[ticker.toUpperCase()] || ticker
+  const period1 = Math.floor(new Date(`${fromDate}T00:00:00Z`).getTime() / 1000)
+  const period2 = Math.floor(new Date(`${toDate}T23:59:59Z`).getTime() / 1000)
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(lookupTicker)}?interval=1d&period1=${period1}&period2=${period2}`
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return { error: `Yahoo hist HTTP ${res.status}` }
+    const body = await res.json()
+    const result = body?.chart?.result?.[0]
+    const timestamps: number[] = result?.timestamp || []
+    const rawCloses: (number | null)[] = result?.indicators?.quote?.[0]?.close || []
+    const rawCcy = String(result?.meta?.currency || '')
+    const isGBp = rawCcy === 'GBp'
+    const closes: { date: string; close: number }[] = []
+    for (let i = 0; i < timestamps.length; i++) {
+      const c = rawCloses[i]
+      if (!Number.isFinite(c) || (c as number) <= 0) continue
+      const date = new Date(timestamps[i] * 1000).toISOString().slice(0, 10)
+      closes.push({ date, close: isGBp ? (c as number) / 100 : (c as number) })
+    }
+    if (closes.length === 0) return { error: 'No history from Yahoo' }
+    return { closes, currency: isGBp ? 'GBP' : rawCcy }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'fetch failed' }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Frankfurter FX (always works)
 // ---------------------------------------------------------------------------
 async function frankfurterRates(from: string, tos: string[]): Promise<Record<string, number>> {
@@ -214,6 +255,146 @@ async function saveDailyMovements(
         [userId, today, g.title, target, allPortfolioValue, pct]
       )
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Backfill daily movements for trading days missed while the cron wasn't
+// running. Reconstructs one real bar per missing day from Yahoo daily closes
+// so a multi-day gap no longer collapses into a single oversized bar. Runs
+// BEFORE saveDailyMovements writes today's row, and never overwrites existing
+// rows (ON CONFLICT DO NOTHING). No-op in normal daily operation.
+// ---------------------------------------------------------------------------
+async function backfillDailyMovements(
+  db: Awaited<ReturnType<typeof getDbClient>>,
+  userId: string,
+  base: string,
+  fxMap: Record<string, number>,
+  today: string,
+  histCache: Map<string, { closes: { date: string; close: number }[]; currency: string } | null>,
+) {
+  const lastRes = await db.query(
+    `SELECT MAX(movement_date) AS last FROM daily_movements WHERE user_id = $1 AND owner = 'all'`,
+    [userId]
+  )
+  const lastRaw = lastRes.rows?.[0]?.last
+  if (!lastRaw) return // no history yet — nothing to backfill against
+  const lastDate = new Date(lastRaw).toISOString().slice(0, 10)
+
+  // Only a gap of ≥2 days can hide a missing trading day. If the last recorded
+  // day is today or yesterday there is nothing to fill — bail before any fetch.
+  const yesterday = new Date(new Date(`${today}T00:00:00Z`).getTime() - 86400000).toISOString().slice(0, 10)
+  if (lastDate >= yesterday) return
+
+  // Bound the window so a very old last-run doesn't fetch months of data.
+  const MAX_BACKFILL_DAYS = 45
+  const earliest = new Date(Date.now() - MAX_BACKFILL_DAYS * 86400000).toISOString().slice(0, 10)
+  const gapFrom = lastDate > earliest ? lastDate : earliest
+
+  const hRes = await db.query(
+    `SELECT h.ticker, h.shares, h.currency, h.notes, h.avg_cost
+     FROM holdings h WHERE h.user_id = $1`,
+    [userId]
+  )
+  const holdings: { ticker: string; shares: number; currency: string; notes: string | null; avg_cost: number }[] = hRes.rows || []
+  if (holdings.length === 0) return
+
+  const equityTickers = [...new Set(
+    holdings
+      .filter((h) => h.ticker && !String(h.ticker).startsWith('CASH:'))
+      .map((h) => String(h.ticker))
+  )]
+
+  // Start history a week before the gap so the first missing day has a prior
+  // close to diff against. Fetch each ticker once, shared across users.
+  const histFrom = new Date(new Date(`${gapFrom}T00:00:00Z`).getTime() - 7 * 86400000).toISOString().slice(0, 10)
+  await Promise.all(equityTickers.map(async (t) => {
+    if (histCache.has(t)) return
+    const h = await yahooDailyHistory(t, histFrom, today)
+    histCache.set(t, 'error' in h ? null : h)
+  }))
+
+  // Candidate missing days: any close date strictly inside (gapFrom, today).
+  const candidateDates = new Set<string>()
+  for (const t of equityTickers) {
+    const hist = histCache.get(t)
+    if (!hist) continue
+    for (const { date } of hist.closes) {
+      if (date > gapFrom && date < today) candidateDates.add(date)
+    }
+  }
+  if (candidateDates.size === 0) return
+
+  // Drop days that already have rows (defensive — MAX() should exclude them).
+  const existingRes = await db.query(
+    `SELECT DISTINCT movement_date FROM daily_movements
+     WHERE user_id = $1 AND movement_date > $2 AND movement_date < $3`,
+    [userId, gapFrom, today]
+  )
+  const existingDates = new Set(
+    (existingRes.rows || []).map((r: any) => new Date(r.movement_date).toISOString().slice(0, 10))
+  )
+  const missingDates = [...candidateDates].filter((d) => !existingDates.has(d)).sort()
+  if (missingDates.length === 0) return
+
+  const owners = new Set<string>(['all'])
+  for (const h of holdings) {
+    const o = ownerFromNotes(h.notes)
+    if (o) owners.add(o)
+  }
+
+  let filled = 0
+  for (const owner of owners) {
+    const filtered = owner === 'all'
+      ? holdings
+      : holdings.filter((h) => ownerFromNotes(h.notes)?.toLowerCase() === owner.toLowerCase())
+
+    for (const date of missingDates) {
+      let movement = 0
+      let portfolioValue = 0
+
+      for (const h of filtered) {
+        const hist = histCache.get(String(h.ticker))
+        if (hist) {
+          const idx = hist.closes.findIndex((c) => c.date === date)
+          // Movement needs the trading day immediately before `date`.
+          if (idx > 0) {
+            movement += h.shares * (hist.closes[idx].close - hist.closes[idx - 1].close) * toBase(1, hist.currency, fxMap, base)
+          }
+          // Value at `date` uses the most recent close on or before it.
+          let asOfClose: number | null = null
+          for (const c of hist.closes) {
+            if (c.date <= date) asOfClose = c.close
+            else break
+          }
+          if (asOfClose != null && asOfClose > 0) {
+            portfolioValue += h.shares * asOfClose * toBase(1, hist.currency, fxMap, base)
+            continue
+          }
+        }
+        // No price feed (cash/MF/EPF) or no close yet — value at cost basis.
+        let unitPrice = Number(h.avg_cost)
+        let valueCcy = h.currency || base
+        if (valueCcy === 'GBX') { unitPrice = unitPrice / 100; valueCcy = 'GBP' }
+        if (Number.isFinite(unitPrice) && unitPrice > 0) {
+          portfolioValue += h.shares * unitPrice * toBase(1, valueCcy, fxMap, base)
+        }
+      }
+
+      if (portfolioValue <= 0) continue
+
+      await db.query(
+        `INSERT INTO daily_movements (user_id, movement_date, owner, movement_gbp, portfolio_value_gbp)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (user_id, movement_date, owner) DO NOTHING`,
+        [userId, date, owner, movement, portfolioValue]
+      )
+      if (owner === 'all') filled++
+    }
+  }
+
+  if (filled > 0) {
+    console.log(`[refresh-prices] backfilled ${filled} missing movement day(s) for user ${userId}`)
   }
 }
 
@@ -380,8 +561,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const fxMapFlat: Record<string, number> = {}
     for (const [pair, { rate }] of Object.entries(fxRatesMap)) fxMapFlat[pair] = rate
 
-    // Save daily movements for every user
+    // Save daily movements for every user. Backfill any trading days missed
+    // while the cron wasn't running FIRST (so today's fresh row isn't the
+    // MAX(date) it measures the gap against), then write today's row. The
+    // history cache is shared so a ticker held by multiple users is fetched once.
+    const histCache = new Map<string, { closes: { date: string; close: number }[]; currency: string } | null>()
     for (const uid of userIds) {
+      try {
+        await backfillDailyMovements(db, uid, base, fxMapFlat, today, histCache)
+      } catch (e) {
+        errors.push({ error: `backfill for ${uid}: ${e instanceof Error ? e.message : 'failed'}` } as any)
+      }
       try {
         await saveDailyMovements(db, uid, base, fxMapFlat, today)
       } catch (e) {
