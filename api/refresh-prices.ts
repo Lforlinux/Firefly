@@ -402,14 +402,16 @@ async function backfillDailyMovements(
 // Handler
 // ---------------------------------------------------------------------------
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-
-  // Support Vercel cron: Authorization: Bearer <CRON_SECRET>
-  // When called by cron, process all users with holdings.
+  // Vercel cron invokes this path with a GET (carrying Authorization: Bearer
+  // <CRON_SECRET>); the manual "Refresh data" button uses an authenticated POST.
+  // Identify the cron BEFORE the method check — otherwise the nightly GET is
+  // rejected with 405 before it can run (which is exactly why the cron never
+  // fired: every invocation 405'd here).
   const cronSecret = process.env.CRON_SECRET
   const isCron = cronSecret && req.headers.authorization === `Bearer ${cronSecret}`
 
   if (!isCron) {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
     const auth = requireAuth(req)
     if (!auth) return res.status(401).json({ error: 'Unauthorized' })
   }
