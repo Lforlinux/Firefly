@@ -102,6 +102,26 @@ export function Overview() {
     const totalLiabGBP = totalLiabilitiesBase(data.liabilities ?? [], gbpBase)
     const totalNetWorthGBP = totalBuilt.totalValueBase - totalLiabGBP
 
+    // All-country daily movement in GBP — mirrors the filtered calc above but
+    // over every holding for this owner, so the auto-snapshot below never lets a
+    // country filter (which drops INR holdings) overwrite the owner's true
+    // movement/value. The filtered `dailyMovement` is kept for the display card.
+    let totalMovementGBP: number | null = null
+    {
+      let currentVal = 0
+      let prevVal = 0
+      let hasPrev = false
+      for (const h of allOwnerHoldings.filter((h) => h.type !== 'cash')) {
+        const quote = data.prices?.[h.ticker]
+        if (!quote?.prevClose) continue
+        hasPrev = true
+        const fx = convertToBase(1, quote.currency, data.fxRates, gbpBase) ?? 1
+        currentVal += h.shares * quote.price * fx
+        prevVal += h.shares * quote.prevClose * fx
+      }
+      if (hasPrev) totalMovementGBP = currentVal - prevVal
+    }
+
     // MTD = sum of daily price movements since the 1st of this month.
     // daily_movements is market-only (new holdings have no prevClose on buy day,
     // so they're skipped by the cron). No manual snapshots needed.
@@ -186,6 +206,8 @@ export function Overview() {
       firstMtdRow,
       mtdPct,
       totalNetWorthGBP,
+      totalValueGBP: totalBuilt.totalValueBase,
+      totalMovementGBP,
       dailyMovement,
       prevCloseAsOf,
     }
@@ -193,9 +215,13 @@ export function Overview() {
 
   // Auto-save today's movement — use ref guard to prevent re-firing on mutation state changes
   useEffect(() => {
-    if (!data || !view || view.dailyMovement == null) return
+    // Post the all-country GBP values, never the country-filtered view — a
+    // filtered snapshot would overwrite the owner's true movement/value (this is
+    // what wrote a UK-only 'all' row when the dashboard was viewed with the UK
+    // filter). The cron writes the same all-country figures, so they agree.
+    if (!data || !view || view.totalMovementGBP == null) return
     const today = new Date().toISOString().slice(0, 10)
-    const runKey = `${today}|${selectedOwner}|${Math.round(view.dailyMovement)}`
+    const runKey = `${today}|${selectedOwner}|${Math.round(view.totalMovementGBP)}`
     // Always set the ref first — prevents repeated calls when alreadySaved or same key
     if (autoMovementKeyRef.current === runKey) return
     autoMovementKeyRef.current = runKey
@@ -206,8 +232,8 @@ export function Overview() {
     postDailyMovement.mutate({
       date: today,
       owner: selectedOwner,
-      movementGBP: view.dailyMovement,
-      portfolioValueGBP: view.totalValueBase,
+      movementGBP: view.totalMovementGBP,
+      portfolioValueGBP: view.totalValueGBP,
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, view, selectedOwner])
