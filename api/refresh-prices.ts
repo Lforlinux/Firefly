@@ -187,6 +187,23 @@ async function saveDailyMovements(
     ])
   )
 
+  // Guard: never write a snapshot when a currency we must convert has no rate.
+  // toBase() would otherwise treat the missing rate as 1:1 and distort the value
+  // (this is what wrote a £6M/£47k row when the INR fetch timed out). Skipping
+  // this run is safe — the next run (or backfill) fills the day correctly.
+  const baseU = base.toUpperCase()
+  const neededCcys = new Set<string>()
+  for (const h of holdings) {
+    const cc = (priceMap.get(h.ticker)?.currency || h.currency || base).toUpperCase()
+    if (cc && cc !== 'GBX') neededCcys.add(cc)
+  }
+  for (const cc of neededCcys) {
+    if (cc !== baseU && !(fxMap[`${cc}_${baseU}`] > 0)) {
+      console.error(`[refresh-prices] skipping movement save for user ${userId}: missing FX ${cc}->${baseU}`)
+      return
+    }
+  }
+
   // Determine distinct owners from holdings
   const owners = new Set<string>(['all'])
   for (const h of holdings) {
@@ -559,8 +576,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       )
     }
 
-    // Build flat fxMap for movement calculation
+    // Build flat fxMap for movement calculation. Seed from the persisted
+    // fx_cache first so a failed live FX fetch (e.g. Frankfurter timeout) falls
+    // back to the last-known rate instead of leaving a currency unconverted —
+    // toBase() treats a missing rate as 1:1, which massively distorts foreign
+    // holdings (INR counted as GBP inflated a portfolio ~128x). Fresh rates from
+    // this run then take precedence.
     const fxMapFlat: Record<string, number> = {}
+    try {
+      const fxAll = await db.query(`SELECT pair, rate FROM fx_cache`)
+      for (const r of fxAll.rows || []) {
+        const rate = Number(r.rate)
+        if (Number.isFinite(rate) && rate > 0) fxMapFlat[String(r.pair)] = rate
+      }
+    } catch { /* no cache yet — rely on fresh rates below */ }
     for (const [pair, { rate }] of Object.entries(fxRatesMap)) fxMapFlat[pair] = rate
 
     // Save daily movements for every user. Backfill any trading days missed
