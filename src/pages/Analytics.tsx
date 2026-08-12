@@ -222,6 +222,33 @@ export function Analytics() {
     return result
   }, [data])
 
+  // Monthly market growth in £ — real price movement per month with deposits
+  // excluded (sums daily_movements.movementGBP, which never includes contributions).
+  // Dynamic: re-derives from dailyMovements on every sync. Sums the 'KLN' owner
+  // (your column) and 'all' (household) so both can be shown side by side.
+  const monthlyMarketGrowth = useMemo(() => {
+    if (!data) return []
+    const byMonth = new Map<string, { kln: number; priya: number; all: number }>()
+    for (const m of data.dailyMovements || []) {
+      if (m.owner !== 'KLN' && m.owner !== 'Priya' && m.owner !== 'all') continue
+      const key = m.date.slice(0, 7)
+      const row = byMonth.get(key) ?? { kln: 0, priya: 0, all: 0 }
+      if (m.owner === 'KLN') row.kln += Number(m.movementGBP) || 0
+      else if (m.owner === 'Priya') row.priya += Number(m.movementGBP) || 0
+      else row.all += Number(m.movementGBP) || 0
+      byMonth.set(key, row)
+    }
+    return [...byMonth.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([month, v]) => ({
+        month,
+        label: new Date(month + '-01T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
+        kln: v.kln,
+        priya: v.priya,
+        all: v.all,
+      }))
+  }, [data])
+
   // Actual contributions + market growth so far this UK financial year (Apr 6 – Apr 5).
   // Feeds the FIRE projection's current-year row with real DB figures.
   const thisFY = useMemo(() => {
@@ -625,6 +652,68 @@ export function Analytics() {
                 </div>
               )
             })()}
+          </Card>
+        )}
+
+        {/* Monthly market growth (£) — real gains with deposits excluded, live from daily tracking */}
+        {selectedCountry !== 'India' && monthlyMarketGrowth.length > 0 && (
+          <Card tone="elevated">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Monthly market growth (£)</h3>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Real price movement per month — your deposits excluded · from daily tracking, updates on every sync
+            </p>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-sm tabular-nums">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-slate-500">
+                    <th className="pb-2 font-medium">Month</th>
+                    <th className="pb-2 text-right font-medium">KLN</th>
+                    <th className="pb-2 text-right font-medium">Priya</th>
+                    <th className="pb-2 text-right font-medium">Household</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyMarketGrowth.map((m) => (
+                    <tr key={m.month} className="border-t border-slate-200/70 dark:border-slate-700/70">
+                      <td className="py-1.5">{m.label}</td>
+                      <td className={`py-1.5 text-right ${m.kln >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {m.kln >= 0 ? '+' : ''}{formatMoney(m.kln, 'GBP')}
+                      </td>
+                      <td className={`py-1.5 text-right ${m.priya >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {m.priya >= 0 ? '+' : ''}{formatMoney(m.priya, 'GBP')}
+                      </td>
+                      <td className={`py-1.5 text-right ${m.all >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {m.all >= 0 ? '+' : ''}{formatMoney(m.all, 'GBP')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                {(() => {
+                  const klnTot = monthlyMarketGrowth.reduce((a, m) => a + m.kln, 0)
+                  const priyaTot = monthlyMarketGrowth.reduce((a, m) => a + m.priya, 0)
+                  const allTot = monthlyMarketGrowth.reduce((a, m) => a + m.all, 0)
+                  return (
+                    <tfoot>
+                      <tr className="border-t-2 border-slate-300 font-semibold dark:border-slate-600">
+                        <td className="pt-2">Total</td>
+                        <td className={`pt-2 text-right ${klnTot >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          {klnTot >= 0 ? '+' : ''}{formatMoney(klnTot, 'GBP')}
+                        </td>
+                        <td className={`pt-2 text-right ${priyaTot >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          {priyaTot >= 0 ? '+' : ''}{formatMoney(priyaTot, 'GBP')}
+                        </td>
+                        <td className={`pt-2 text-right ${allTot >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          {allTot >= 0 ? '+' : ''}{formatMoney(allTot, 'GBP')}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )
+                })()}
+              </table>
+            </div>
+            <p className="mt-3 text-xs text-slate-400">
+              Deposits and share edits move your value but never appear here — this is market movement only. Series begins where daily tracking started.
+            </p>
           </Card>
         )}
 
