@@ -99,12 +99,13 @@ async function yahooDailyHistory(
   ticker: string,
   fromDate: string,
   toDate: string,
+  interval: '1d' | '1wk' = '1d',
 ): Promise<{ closes: { date: string; close: number }[]; currency: string } | { error: string }> {
   const lookupTicker = TICKER_ALIASES[ticker.toUpperCase()] || ticker
   const period1 = Math.floor(new Date(`${fromDate}T00:00:00Z`).getTime() / 1000)
   const period2 = Math.floor(new Date(`${toDate}T23:59:59Z`).getTime() / 1000)
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(lookupTicker)}?interval=1d&period1=${period1}&period2=${period2}`
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(lookupTicker)}?interval=${interval}&period1=${period1}&period2=${period2}`
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
       signal: AbortSignal.timeout(8000),
@@ -131,9 +132,12 @@ async function yahooDailyHistory(
 }
 
 // ---------------------------------------------------------------------------
-// Essentials: UK ETF price variation over 2..12 months (drives the /essentials
-// page). Reads the user's GBP ETF holdings, pulls ~13 months of Yahoo history,
-// and reports the change from N months ago to now for N = 2..12.
+// Essentials: stock & ETF price variation over 1..12 months (drives the
+// /essentials page). Reads every priced stock/ETF holding (UK, US, India;
+// excludes cash, Indian MFs and EPF which have no market feed), pulls ~13
+// months of weekly Yahoo history, and reports the change from N months ago to
+// now for N = 1..12. Weekly history keeps ~50 lookups fast and well within the
+// function time limit.
 // ---------------------------------------------------------------------------
 const ESSENTIALS_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
@@ -144,9 +148,10 @@ async function handleEssentials(res: VercelResponse, userId: string) {
       await db.query(
         `SELECT ticker, MIN(name) AS name
          FROM holdings
-         WHERE user_id = $1 AND type = 'etf' AND currency IN ('GBP','GBX','GBp')
+         WHERE user_id = $1 AND type IN ('etf','stock')
+           AND ticker NOT LIKE 'CASH:%' AND ticker NOT LIKE '%.MF' AND ticker NOT LIKE '%.PF'
          GROUP BY ticker
-         ORDER BY MIN(name)`,
+         ORDER BY MIN(currency), MIN(name)`,
         [userId]
       )
     ).rows
@@ -159,31 +164,36 @@ async function handleEssentials(res: VercelResponse, userId: string) {
     const monthsAgo = (m: number) =>
       new Date(today.getFullYear(), today.getMonth() - m, today.getDate()).toISOString().slice(0, 10)
 
-    const etfs = await Promise.all(
-      rows.map(async (r) => {
-        const name = String(r.name).replace(/\s*-\s*(KLN|Priya)\s*$/i, '').trim()
-        const hist = await yahooDailyHistory(r.ticker, fromDate, toDate)
-        if ('error' in hist || hist.closes.length === 0) {
-          return { ticker: r.ticker, name, error: true }
+    const compute = async (r: { ticker: string; name: string }) => {
+      const name = String(r.name).replace(/\s*-\s*(KLN|Priya)\s*$/i, '').trim()
+      const hist = await yahooDailyHistory(r.ticker, fromDate, toDate, '1wk')
+      if ('error' in hist || hist.closes.length === 0) {
+        return { ticker: r.ticker, name, error: true }
+      }
+      const closes = hist.closes // ascending by date
+      const current = closes[closes.length - 1].close
+      const priceOnOrBefore = (target: string): number | null => {
+        let found: number | null = null
+        for (const c of closes) {
+          if (c.date <= target) found = c.close
+          else break
         }
-        const closes = hist.closes // ascending by date
-        const current = closes[closes.length - 1].close
-        const priceOnOrBefore = (target: string): number | null => {
-          let found: number | null = null
-          for (const c of closes) {
-            if (c.date <= target) found = c.close
-            else break
-          }
-          return found
-        }
-        const changes = ESSENTIALS_MONTHS.map((m) => {
-          const then = priceOnOrBefore(monthsAgo(m))
-          if (then == null || then <= 0) return { months: m, then: null, change: null, pct: null }
-          return { months: m, then, change: current - then, pct: ((current - then) / then) * 100 }
-        })
-        return { ticker: r.ticker, name, currency: hist.currency, current, changes }
+        return found
+      }
+      const changes = ESSENTIALS_MONTHS.map((m) => {
+        const then = priceOnOrBefore(monthsAgo(m))
+        if (then == null || then <= 0) return { months: m, then: null, change: null, pct: null }
+        return { months: m, then, change: current - then, pct: ((current - then) / then) * 100 }
       })
-    )
+      return { ticker: r.ticker, name, currency: hist.currency, current, changes }
+    }
+
+    // Fetch in batches to stay friendly to Yahoo and keep peak concurrency low.
+    const etfs: unknown[] = []
+    for (let i = 0; i < rows.length; i += 12) {
+      const batch = rows.slice(i, i + 12)
+      etfs.push(...(await Promise.all(batch.map(compute))))
+    }
 
     return res.status(200).json({ etfs, asOf: new Date().toISOString() })
   } catch (e) {

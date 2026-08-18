@@ -112,17 +112,18 @@ function EtfVariation() {
     staleTime: 10 * 60_000,
   })
   const [sel, setSel] = useState(2)
+  const etfs = Array.isArray(data?.etfs) ? data!.etfs : []
 
   return (
     <Card tone="elevated" className="ff-essentials-etf-card">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">UK ETFs — price variation</h3>
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Stocks &amp; ETFs — price variation</h3>
         {data?.asOf && (
           <span className="text-xs text-slate-400">as of {new Date(data.asOf).toLocaleDateString('en-GB')}</span>
         )}
       </div>
       <p className="mt-0.5 text-xs text-slate-500">
-        Change from N months ago to now, across your GBP ETF holdings (KLN + Priya). Pick a period to highlight it.
+        Change from N months ago to now, across all your stock &amp; ETF holdings (KLN + Priya). Pick a period to highlight it.
       </p>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -144,7 +145,7 @@ function EtfVariation() {
       {isLoading && <p className="mt-4 text-sm text-slate-500">Loading prices…</p>}
       {error && <p className="mt-4 text-sm text-rose-500">{(error as Error).message}</p>}
 
-      {data && data.etfs.length > 0 && (
+      {!isLoading && !error && etfs.length > 0 && (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-sm tabular-nums">
             <thead>
@@ -162,14 +163,16 @@ function EtfVariation() {
               </tr>
             </thead>
             <tbody>
-              {data.etfs.map((e) => (
+              {etfs.map((e) => (
                 <tr key={e.ticker} className="border-t border-slate-200/70 dark:border-slate-700/70">
                   <td className="py-1.5 pr-3 whitespace-nowrap">
                     <span className="font-medium text-slate-800 dark:text-slate-200">{e.name}</span>
                     <span className="ml-1.5 text-xs text-slate-400">{e.ticker}</span>
                   </td>
                   <td className="py-1.5 px-2 text-right">
-                    {e.error || e.current == null ? '—' : formatMoney(e.current, 'GBP', 2)}
+                    {e.error || e.current == null
+                      ? '—'
+                      : formatMoney(e.current, (e.currency ?? 'GBP') as Parameters<typeof formatMoney>[1], 2)}
                   </td>
                   {MONTH_COLS.map((m) => {
                     const ch = e.changes?.find((c) => c.months === m)
@@ -189,7 +192,7 @@ function EtfVariation() {
         </div>
       )}
 
-      {data && data.etfs.length === 0 && (
+      {!isLoading && !error && data && etfs.length === 0 && (
         <p className="mt-4 text-sm text-slate-500">No UK ETF holdings found.</p>
       )}
     </Card>
