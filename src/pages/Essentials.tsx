@@ -93,13 +93,13 @@ export function Essentials() {
   )
 }
 
-const MONTH_COLS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+const MONTH_COLS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
-function PctCell({ pct }: { pct: number | null | undefined }) {
+function PctCell({ pct, strong }: { pct: number | null | undefined; strong?: boolean }) {
   if (pct == null) return <span className="text-slate-400">—</span>
   const pos = pct >= 0
   return (
-    <span className={pos ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+    <span className={`${strong ? 'font-semibold' : ''} ${pos ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
       {pos ? '+' : ''}{pct.toFixed(1)}%
     </span>
   )
@@ -111,6 +111,7 @@ function EtfVariation() {
     queryFn: fetchEssentials,
     staleTime: 10 * 60_000,
   })
+  const [sel, setSel] = useState(2)
 
   return (
     <Card tone="elevated" className="ff-essentials-etf-card">
@@ -121,8 +122,24 @@ function EtfVariation() {
         )}
       </div>
       <p className="mt-0.5 text-xs text-slate-500">
-        Change from N months ago to now, across your GBP ETF holdings (KLN + Priya).
+        Change from N months ago to now, across your GBP ETF holdings (KLN + Priya). Pick a period to highlight it.
       </p>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {MONTH_COLS.map((m) => (
+          <button
+            key={m}
+            onClick={() => setSel(m)}
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+              sel === m
+                ? 'bg-teal-600 text-white'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+            }`}
+          >
+            {m}M
+          </button>
+        ))}
+      </div>
 
       {isLoading && <p className="mt-4 text-sm text-slate-500">Loading prices…</p>}
       {error && <p className="mt-4 text-sm text-rose-500">{(error as Error).message}</p>}
@@ -135,7 +152,12 @@ function EtfVariation() {
                 <th className="pb-2 pr-3 font-medium">ETF</th>
                 <th className="pb-2 px-2 text-right font-medium">Current</th>
                 {MONTH_COLS.map((m) => (
-                  <th key={m} className="pb-2 px-2 text-right font-medium">{m}M</th>
+                  <th
+                    key={m}
+                    className={`pb-2 px-2 text-right font-medium ${m === sel ? 'rounded-t bg-teal-500/10 text-teal-600 dark:text-teal-300' : ''}`}
+                  >
+                    {m}M
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -152,8 +174,11 @@ function EtfVariation() {
                   {MONTH_COLS.map((m) => {
                     const ch = e.changes?.find((c) => c.months === m)
                     return (
-                      <td key={m} className="py-1.5 px-2 text-right whitespace-nowrap">
-                        <PctCell pct={ch?.pct} />
+                      <td
+                        key={m}
+                        className={`py-1.5 px-2 text-right whitespace-nowrap ${m === sel ? 'bg-teal-500/10' : ''}`}
+                      >
+                        <PctCell pct={ch?.pct} strong={m === sel} />
                       </td>
                     )
                   })}

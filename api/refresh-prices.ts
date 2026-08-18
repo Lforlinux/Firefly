@@ -135,7 +135,7 @@ async function yahooDailyHistory(
 // page). Reads the user's GBP ETF holdings, pulls ~13 months of Yahoo history,
 // and reports the change from N months ago to now for N = 2..12.
 // ---------------------------------------------------------------------------
-const ESSENTIALS_MONTHS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+const ESSENTIALS_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 async function handleEssentials(res: VercelResponse, userId: string) {
   try {
