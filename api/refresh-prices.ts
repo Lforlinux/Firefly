@@ -131,6 +131,67 @@ async function yahooDailyHistory(
 }
 
 // ---------------------------------------------------------------------------
+// Essentials: UK ETF price variation over 2..12 months (drives the /essentials
+// page). Reads the user's GBP ETF holdings, pulls ~13 months of Yahoo history,
+// and reports the change from N months ago to now for N = 2..12.
+// ---------------------------------------------------------------------------
+const ESSENTIALS_MONTHS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+async function handleEssentials(res: VercelResponse, userId: string) {
+  try {
+    const db = await getDbClient()
+    const rows: { ticker: string; name: string }[] = (
+      await db.query(
+        `SELECT ticker, MIN(name) AS name
+         FROM holdings
+         WHERE user_id = $1 AND type = 'etf' AND currency IN ('GBP','GBX','GBp')
+         GROUP BY ticker
+         ORDER BY MIN(name)`,
+        [userId]
+      )
+    ).rows
+
+    const today = new Date()
+    const toDate = today.toISOString().slice(0, 10)
+    const fromDate = new Date(today.getFullYear(), today.getMonth() - 13, today.getDate())
+      .toISOString()
+      .slice(0, 10)
+    const monthsAgo = (m: number) =>
+      new Date(today.getFullYear(), today.getMonth() - m, today.getDate()).toISOString().slice(0, 10)
+
+    const etfs = await Promise.all(
+      rows.map(async (r) => {
+        const name = String(r.name).replace(/\s*-\s*(KLN|Priya)\s*$/i, '').trim()
+        const hist = await yahooDailyHistory(r.ticker, fromDate, toDate)
+        if ('error' in hist || hist.closes.length === 0) {
+          return { ticker: r.ticker, name, error: true }
+        }
+        const closes = hist.closes // ascending by date
+        const current = closes[closes.length - 1].close
+        const priceOnOrBefore = (target: string): number | null => {
+          let found: number | null = null
+          for (const c of closes) {
+            if (c.date <= target) found = c.close
+            else break
+          }
+          return found
+        }
+        const changes = ESSENTIALS_MONTHS.map((m) => {
+          const then = priceOnOrBefore(monthsAgo(m))
+          if (then == null || then <= 0) return { months: m, then: null, change: null, pct: null }
+          return { months: m, then, change: current - then, pct: ((current - then) / then) * 100 }
+        })
+        return { ticker: r.ticker, name, currency: hist.currency, current, changes }
+      })
+    )
+
+    return res.status(200).json({ etfs, asOf: new Date().toISOString() })
+  } catch (e) {
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'essentials failed' })
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Frankfurter FX (always works)
 // ---------------------------------------------------------------------------
 async function frankfurterRates(from: string, tos: string[]): Promise<Record<string, number>> {
@@ -419,6 +480,13 @@ async function backfillDailyMovements(
 // Handler
 // ---------------------------------------------------------------------------
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Essentials read: UK ETF price variation. Authed GET, no refresh side effects.
+  if (req.method === 'GET' && req.query.action === 'essentials') {
+    const auth = requireAuth(req)
+    if (!auth) return res.status(401).json({ error: 'Unauthorized' })
+    return handleEssentials(res, auth.userId)
+  }
+
   // Vercel cron invokes this path with a GET (carrying Authorization: Bearer
   // <CRON_SECRET>); the manual "Refresh data" button uses an authenticated POST.
   // Identify the cron BEFORE the method check — otherwise the nightly GET is

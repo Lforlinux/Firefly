@@ -289,3 +289,22 @@ export function saveFirePlanner(planner: FirePlannerData, country: string): Prom
     body: JSON.stringify({ type: 'fire', country, ...planner }),
   })
 }
+
+// Essentials: UK ETF price variation over 2..12 months (served by refresh-prices).
+export interface EssentialsChange {
+  months: number
+  then: number | null
+  change: number | null
+  pct: number | null
+}
+export interface EssentialsEtf {
+  ticker: string
+  name: string
+  currency?: string
+  current?: number
+  changes?: EssentialsChange[]
+  error?: boolean
+}
+export function fetchEssentials(): Promise<{ etfs: EssentialsEtf[]; asOf: string }> {
+  return jsonFetch('/api/refresh-prices?action=essentials')
+}
