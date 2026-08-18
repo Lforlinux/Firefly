@@ -133,11 +133,11 @@ async function yahooDailyHistory(
 
 // ---------------------------------------------------------------------------
 // Essentials: stock & ETF price variation over 1..12 months (drives the
-// /essentials page). Reads every priced stock/ETF holding (UK, US, India;
-// excludes cash, Indian MFs and EPF which have no market feed), pulls ~13
-// months of weekly Yahoo history, and reports the change from N months ago to
-// now for N = 1..12. Weekly history keeps ~50 lookups fast and well within the
-// function time limit.
+// /essentials page). Reads the user's UK + US priced stock/ETF holdings
+// (India / INR is excluded here, along with cash, Indian MFs and EPF which
+// have no market feed), pulls ~13 months of weekly Yahoo history, and reports
+// the change from N months ago to now for N = 1..12. Weekly history keeps the
+// lookups fast and well within the function time limit.
 // ---------------------------------------------------------------------------
 const ESSENTIALS_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
@@ -148,7 +148,7 @@ async function handleEssentials(res: VercelResponse, userId: string) {
       await db.query(
         `SELECT ticker, MIN(name) AS name
          FROM holdings
-         WHERE user_id = $1 AND type IN ('etf','stock')
+         WHERE user_id = $1 AND type IN ('etf','stock') AND currency <> 'INR'
            AND ticker NOT LIKE 'CASH:%' AND ticker NOT LIKE '%.MF' AND ticker NOT LIKE '%.PF'
          GROUP BY ticker
          ORDER BY MIN(currency), MIN(name)`,

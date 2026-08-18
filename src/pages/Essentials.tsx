@@ -123,7 +123,7 @@ function EtfVariation() {
         )}
       </div>
       <p className="mt-0.5 text-xs text-slate-500">
-        Change from N months ago to now, across all your stock &amp; ETF holdings (KLN + Priya). Pick a period to highlight it.
+        Change from N months ago to now, across your UK &amp; US stock &amp; ETF holdings (KLN + Priya). Pick a period to highlight it.
       </p>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
