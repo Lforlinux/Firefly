@@ -81,7 +81,8 @@ export function DailyMovement() {
   if (error) return <PageBody><EmptyState title="Couldn't load movements" body={(error as Error).message} /></PageBody>
 
   const fmtDate = (d: string) => {
-    const dt = new Date(d + 'T12:00:00Z')
+    const dt = new Date(d.includes('T') ? d : d + 'T12:00:00Z')
+    if (Number.isNaN(dt.getTime())) return d
     return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
   }
 
