@@ -1,10 +1,10 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Bar, BarChart, CartesianGrid, Cell, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { ArrowLeft, TrendingDown, TrendingUp } from 'lucide-react'
+import { ArrowLeft, ShoppingCart, TrendingDown, TrendingUp } from 'lucide-react'
 import { usePortfolio, useUi } from '@/context/AppContext'
 import { convertToBase } from '@/utils/calculations'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
@@ -22,6 +22,13 @@ export function DailyMovement() {
   const { data, isLoading, error } = usePortfolio()
   const { selectedOwner, selectedCountry, visualStyle } = useUi()
   const is3d = visualStyle === 'premium3d'
+
+  // Dip-buy plan: % of each holding's drop to buy. Persisted per-browser.
+  const [dipPct, setDipPct] = useState<number>(() => {
+    const saved = Number(localStorage.getItem('firefly.dipBuyPct'))
+    return Number.isFinite(saved) && saved > 0 ? saved : 10
+  })
+  useEffect(() => { localStorage.setItem('firefly.dipBuyPct', String(dipPct)) }, [dipPct])
 
   const { base, movements, bestDay, worstDay, totalCaptured, today } = useMemo(() => {
     if (!data) return { base: 'GBP', movements: [], bestDay: null, worstDay: null, totalCaptured: 0, today: null }
@@ -153,6 +160,70 @@ export function DailyMovement() {
                         : <p className="px-2.5 py-1.5 text-xs text-slate-400">None down on the day.</p>}
                     </div>
                   </div>
+                </Card>
+              )
+            })()}
+
+            {today && today.losers.length > 0 && (() => {
+              const suggestions = today.losers.map((c) => ({ ...c, buy: (dipPct / 100) * Math.abs(c.move) }))
+              const totalBuy = suggestions.reduce((s, c) => s + c.buy, 0)
+              return (
+                <Card tone="elevated">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                        <ShoppingCart className="h-4 w-4 text-slate-400" /> Dip-buy plan
+                      </h3>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Buy {dipPct}% of each holding’s drop today. A calculator — you place the trades.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">Buy</span>
+                      {[5, 10, 15, 20].map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setDipPct(p)}
+                          className={[
+                            'rounded-lg px-2.5 py-1 text-xs font-semibold tabular-nums transition',
+                            dipPct === p
+                              ? (is3d ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900')
+                              : (is3d ? 'bg-indigo-900/50 text-cyan-200 hover:bg-indigo-800/60' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'),
+                          ].join(' ')}
+                        >
+                          {p}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-1">
+                    {suggestions.map((c) => (
+                      <div key={c.id} className={`flex items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 ${is3d ? 'hover:bg-indigo-900/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{c.ticker}</div>
+                          <div className="truncate text-[11px] text-slate-500">
+                            down {formatMoney(c.move, today.base)} ({formatPercent(c.pct)})
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                            {formatMoney(c.buy, today.base)}
+                          </div>
+                          <div className="text-[11px] text-slate-400">buy</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className={`mt-3 flex items-center justify-between rounded-xl px-3 py-2.5 ${is3d ? 'bg-indigo-900/50' : 'bg-slate-50 dark:bg-slate-800/60'}`}>
+                    <span className="text-sm font-semibold">Total to invest today</span>
+                    <span className="text-lg font-bold tabular-nums text-slate-900 dark:text-slate-100">{formatMoney(totalBuy, today.base)}</span>
+                  </div>
+                  <p className={`mt-2 text-[11px] leading-snug ${is3d ? 'text-indigo-300/60' : 'text-slate-400'}`}>
+                    On top of your regular monthly investing. Only shown for holdings down on the day — a red day isn’t a valuation “discount”, just a lower entry vs yesterday. Keep an eye on cash drag.
+                  </p>
                 </Card>
               )
             })()}
