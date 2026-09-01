@@ -4,18 +4,27 @@ import {
   Bar, BarChart, CartesianGrid, Cell, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, TrendingDown, TrendingUp } from 'lucide-react'
 import { usePortfolio, useUi } from '@/context/AppContext'
+import { convertToBase } from '@/utils/calculations'
 import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
-import { formatMoney } from '@/utils/format'
+import { formatMoney, formatPercent } from '@/utils/format'
+
+interface Contributor {
+  id: string
+  ticker: string
+  name: string
+  move: number // in base currency
+  pct: number  // (price − prevClose) / prevClose
+}
 
 export function DailyMovement() {
   const { data, isLoading, error } = usePortfolio()
-  const { selectedOwner, visualStyle } = useUi()
+  const { selectedOwner, selectedCountry, visualStyle } = useUi()
   const is3d = visualStyle === 'premium3d'
 
-  const { base, movements, bestDay, worstDay, totalCaptured } = useMemo(() => {
-    if (!data) return { base: 'GBP', movements: [], bestDay: null, worstDay: null, totalCaptured: 0 }
+  const { base, movements, bestDay, worstDay, totalCaptured, today } = useMemo(() => {
+    if (!data) return { base: 'GBP', movements: [], bestDay: null, worstDay: null, totalCaptured: 0, today: null }
     const base = data.settings.baseCurrency || 'GBP'
 
     const movements = [...(data.dailyMovements || [])]
@@ -29,8 +38,44 @@ export function DailyMovement() {
     const worstDay = vals.length ? movements[vals.indexOf(Math.min(...vals))] : null
     const totalCaptured = vals.reduce((s, v) => s + v, 0)
 
-    return { base, movements, bestDay, worstDay, totalCaptured }
-  }, [data, selectedOwner])
+    // Latest-day per-holding breakdown, computed live from price vs prev close.
+    // Mirrors the dashboard "Today's movement" card: same owner + country filter
+    // and base currency, so the totals tie out.
+    let filtered = selectedOwner === 'all'
+      ? data.holdings
+      : data.holdings.filter((h) => (h.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))
+    if (selectedCountry === 'UK') filtered = filtered.filter((h) => h.currency !== 'INR')
+    else if (selectedCountry === 'India') filtered = filtered.filter((h) => h.currency === 'INR')
+    const todayBase = selectedCountry === 'India' ? 'INR' : base
+
+    const contributors: Contributor[] = []
+    let total = 0
+    let asOf: string | null = null
+    for (const h of filtered) {
+      if (h.type === 'cash') continue
+      const quote = data.prices?.[h.ticker]
+      if (!quote?.prevClose) continue
+      const fx = convertToBase(1, quote.currency, data.fxRates, todayBase) ?? 1
+      const move = h.shares * (quote.price - quote.prevClose) * fx
+      if (!Number.isFinite(move) || move === 0) continue
+      total += move
+      contributors.push({
+        id: h.id,
+        ticker: h.ticker,
+        name: h.name,
+        move,
+        pct: quote.prevClose ? ((quote.price - quote.prevClose) / quote.prevClose) * 100 : 0,
+      })
+      if (!asOf || (quote.prevCloseAsOf && quote.prevCloseAsOf > asOf)) asOf = quote.prevCloseAsOf ?? asOf
+    }
+    const gainers = contributors.filter((c) => c.move > 0).sort((a, b) => b.move - a.move)
+    const losers = contributors.filter((c) => c.move < 0).sort((a, b) => a.move - b.move)
+    const today = contributors.length > 0
+      ? { total, asOf, gainers, losers, base: todayBase }
+      : null
+
+    return { base, movements, bestDay, worstDay, totalCaptured, today }
+  }, [data, selectedOwner, selectedCountry])
 
   if (isLoading) return <Loading />
   if (error) return <PageBody><EmptyState title="Couldn't load movements" body={(error as Error).message} /></PageBody>
@@ -60,6 +105,57 @@ export function DailyMovement() {
           />
         ) : (
           <>
+            {today && (() => {
+              const up = today.total >= 0
+              const cRow = (c: Contributor) => (
+                <div key={c.id} className={`flex items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 ${is3d ? 'hover:bg-indigo-900/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{c.ticker}</div>
+                    <div className="truncate text-[11px] text-slate-500">{c.name}</div>
+                  </div>
+                  <div className="shrink-0 text-right tabular-nums">
+                    <div className={`text-sm font-semibold ${c.move >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {c.move >= 0 ? '+' : ''}{formatMoney(c.move, today.base)}
+                    </div>
+                    <div className={`text-[11px] ${c.move >= 0 ? 'text-emerald-500/80' : 'text-rose-500/80'}`}>{formatPercent(c.pct)}</div>
+                  </div>
+                </div>
+              )
+              return (
+                <Card tone="elevated">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">Latest day — who moved it</h3>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Per-holding contribution{today.asOf ? ` vs close ${fmtDate(today.asOf)}` : ''}. Sums to the total.
+                      </p>
+                    </div>
+                    <div className={`shrink-0 text-right text-2xl font-semibold tabular-nums ${up ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {up ? '+' : ''}{formatMoney(today.total, today.base)}
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-emerald-500">
+                        <TrendingUp className="h-3.5 w-3.5" /> Gainers ({today.gainers.length})
+                      </div>
+                      {today.gainers.length > 0
+                        ? <div className="max-h-64 overflow-y-auto">{today.gainers.map(cRow)}</div>
+                        : <p className="px-2.5 py-1.5 text-xs text-slate-400">None up on the day.</p>}
+                    </div>
+                    <div>
+                      <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-rose-500">
+                        <TrendingDown className="h-3.5 w-3.5" /> Losers ({today.losers.length})
+                      </div>
+                      {today.losers.length > 0
+                        ? <div className="max-h-64 overflow-y-auto">{today.losers.map(cRow)}</div>
+                        : <p className="px-2.5 py-1.5 text-xs text-slate-400">None down on the day.</p>}
+                    </div>
+                  </div>
+                </Card>
+              )
+            })()}
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Card tone="elevated">
                 <div className="text-xs uppercase tracking-wider text-slate-500">Captured total</div>
