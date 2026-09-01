@@ -176,6 +176,62 @@ export interface GroupedSlice {
   count: number
 }
 
+/** A dated cash flow for return calculations. Negative = money in (buy/contribution),
+ *  positive = money out (sell/dividend/terminal market value). */
+export interface CashFlow {
+  date: string   // YYYY-MM-DD
+  amount: number // in a single, consistent currency
+}
+
+const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000
+
+/**
+ * Money-weighted annualised return (XIRR) as a percentage, e.g. 8.3 for +8.3%/yr.
+ *
+ * Solves for the rate r where Σ amountᵢ / (1+r)^yearsᵢ = 0 using bisection
+ * (robust, no derivative, always converges when a sign change exists).
+ * Returns null when there aren't both an inflow and an outflow, or when no
+ * root exists in a sane range (−99.99%/yr … +1000%/yr).
+ */
+export function xirr(flows: CashFlow[]): number | null {
+  const valid = flows.filter((f) => Number.isFinite(f.amount) && f.date)
+  if (valid.length < 2) return null
+  if (!valid.some((f) => f.amount < 0) || !valid.some((f) => f.amount > 0)) return null
+
+  const sorted = [...valid].sort((a, b) => a.date.localeCompare(b.date))
+  const t0 = new Date(sorted[0].date + 'T12:00:00Z').getTime()
+  const years = (d: string) => (new Date(d + 'T12:00:00Z').getTime() - t0) / MS_PER_YEAR
+  const npv = (r: number) => sorted.reduce((s, f) => s + f.amount / Math.pow(1 + r, years(f.date)), 0)
+
+  let lo = -0.9999
+  let hi = 10 // 1000% / yr
+  let fLo = npv(lo)
+  let fHi = npv(hi)
+  if (!Number.isFinite(fLo) || !Number.isFinite(fHi) || fLo * fHi > 0) return null
+
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2
+    const fMid = npv(mid)
+    if (!Number.isFinite(fMid)) return null
+    if (Math.abs(fMid) < 1e-7 || (hi - lo) < 1e-8) return mid * 100
+    if (fLo * fMid < 0) { hi = mid; fHi = fMid } else { lo = mid; fLo = fMid }
+  }
+  return ((lo + hi) / 2) * 100
+}
+
+/**
+ * Compound annual growth rate as a percentage. Time-weighted single-period:
+ * (end / start)^(1/years) − 1. Returns null for non-positive values or a span
+ * shorter than `minDays` (too short to annualise meaningfully).
+ */
+export function cagr(startValue: number, startDate: string, endValue: number, endDate: string, minDays = 90): number | null {
+  if (!(startValue > 0) || !(endValue > 0)) return null
+  const spanMs = new Date(endDate + 'T12:00:00Z').getTime() - new Date(startDate + 'T12:00:00Z').getTime()
+  const years = spanMs / MS_PER_YEAR
+  if (years < minDays / 365) return null
+  return (Math.pow(endValue / startValue, 1 / years) - 1) * 100
+}
+
 function inferSector(row: HoldingRow): string {
   const raw = (row.sector || '').trim()
   if (raw) return raw

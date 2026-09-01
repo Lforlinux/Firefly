@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { CartesianGrid, Line, LineChart, Cell, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { AlertCircle, CalendarClock, Flame, ShieldCheck, TrendingDown, TrendingUp, X } from 'lucide-react'
 import { usePortfolio, usePostDailyMovement, useUi } from '@/context/AppContext'
-import { buildPortfolio, byType, topN, convertToBase } from '@/utils/calculations'
+import { buildPortfolio, byType, topN, convertToBase, xirr, cagr } from '@/utils/calculations'
+import type { CashFlow } from '@/utils/calculations'
 import { formatMoney, formatPercent, formatRelative } from '@/utils/format'
 import { Card, EmptyState, GainLossBadge, KpiCard, Loading, PageBody, PageHeader } from '@/components/ui'
 import { totalLiabilitiesBase } from '@/utils/liabilities'
@@ -35,6 +36,9 @@ export function Overview() {
   const [fxModalOpen, setFxModalOpen] = useState(false)
   const [fxHistory, setFxHistory] = useState<{ date: string; rate: number }[]>([])
   const [fxLoading, setFxLoading] = useState(false)
+
+  // ── Total G/L detail modal ─────────────────────────────────────────────────
+  const [glModalOpen, setGlModalOpen] = useState(false)
 
   const openFxModal = useCallback(async () => {
     setFxModalOpen(true)
@@ -157,6 +161,60 @@ export function Overview() {
     const mtdPct = mtdOpenValue && mtdOpenValue > 0 && monthDelta != null
       ? monthDelta / mtdOpenValue
       : null
+    // ── Gain/Loss detail (for the Total G/L modal) ─────────────────────────────
+    const today = new Date().toISOString().slice(0, 10)
+    // Per-holding unrealised winners & losers, biggest £ move first.
+    const glRows = [...built.investedRows].sort((a, b) => b.gainLoss - a.gainLoss)
+    const winners = glRows.filter((r) => r.gainLoss > 0)
+    const losers = glRows.filter((r) => r.gainLoss < 0).sort((a, b) => a.gainLoss - b.gainLoss)
+
+    // XIRR — money-weighted, from dated transactions + today's liquidation value.
+    // Buys are cash in (−), sells/dividends are cash out (+). All converted to base
+    // at current FX (historical FX isn't stored — noted in the modal).
+    const filteredTickers = new Set(filtered.map((h) => h.ticker))
+    const glTxns = (data.transactions || []).filter((t) => {
+      if (!filteredTickers.has(t.ticker)) return false
+      if (selectedOwner !== 'all' && !((t.notes || '').match(new RegExp(`Owner:\\s*${selectedOwner}`, 'i')))) return false
+      return true
+    })
+    const flows: CashFlow[] = []
+    let dividendsBase = 0
+    for (const t of glTxns) {
+      const gross = convertToBase(t.shares * t.price, t.currency, data.fxRates, base)
+      if (gross == null || !Number.isFinite(gross)) continue
+      if (t.side === 'buy') flows.push({ date: t.date, amount: -Math.abs(gross) })
+      else if (t.side === 'sell') flows.push({ date: t.date, amount: Math.abs(gross) })
+      else if (t.side === 'dividend') {
+        const div = gross || convertToBase(t.price, t.currency, data.fxRates, base) || 0
+        flows.push({ date: t.date, amount: Math.abs(div) })
+        dividendsBase += Math.abs(div)
+      } else if (t.side === 'fee') flows.push({ date: t.date, amount: -Math.abs(gross) })
+      // 'split' has no cash impact
+    }
+    if (built.totalValueBase > 0) flows.push({ date: today, amount: built.totalValueBase })
+    const xirrPct = flows.length >= 2 ? xirr(flows) : null
+
+    // CAGR — whole-portfolio, GBP, since the earliest snapshot.
+    const snaps = [...(data.snapshots || [])].sort((a, b) => a.date.localeCompare(b.date))
+    const firstSnap = snaps[0] ?? null
+    const cagrPct = firstSnap
+      ? cagr(firstSnap.valueGBP, firstSnap.date, totalBuilt.totalValueBase, today)
+      : null
+
+    const glDetail = {
+      totalGainLoss: built.totalGainLoss,
+      totalCostBase: built.totalCostBase,
+      totalValueBase: built.totalValueBase,
+      simpleReturnPct: built.totalGainLossPct,
+      winners,
+      losers,
+      xirrPct,
+      cagrPct,
+      cagrSince: firstSnap?.date ?? null,
+      dividendsBase,
+      txnCount: glTxns.length,
+    }
+
     let essentialsScore = 0
     let fireProgress = 0
     let fireYears = 0
@@ -210,6 +268,7 @@ export function Overview() {
       totalMovementGBP,
       dailyMovement,
       prevCloseAsOf,
+      glDetail,
     }
   }, [data, selectedOwner, selectedCountry])
 
@@ -264,6 +323,7 @@ export function Overview() {
     netWorth,
     dailyMovement,
     prevCloseAsOf,
+    glDetail,
   } = view
   const is3d = visualStyle === 'premium3d'
   const hidden = '•••••'
@@ -335,12 +395,14 @@ export function Overview() {
               sub={livePriceCount === 0 ? 'cost basis' : `${view.investedRows.length} positions`}
             />
           </Link>
-          <KpiCard
-            label="Total G/L"
-            value={money(totalGainLoss)}
-            tone={totalGainLoss === 0 ? 'neutral' : totalGainLoss > 0 ? 'gain' : 'loss'}
-            sub={livePriceCount === 0 ? '—' : formatPercent(totalGainLossPct)}
-          />
+          <button type="button" onClick={() => setGlModalOpen(true)} className="block w-full text-left transition hover:opacity-90 active:scale-[0.98]">
+            <KpiCard
+              label="Total G/L"
+              value={money(totalGainLoss)}
+              tone={totalGainLoss === 0 ? 'neutral' : totalGainLoss > 0 ? 'gain' : 'loss'}
+              sub={livePriceCount === 0 ? '—' : `${formatPercent(totalGainLossPct)} · Tap for detail`}
+            />
+          </button>
           <Link to="/daily-movement" className="block transition hover:opacity-95">
             <KpiCard
               label={(() => { const d = new Date().getDay(); return d === 0 || d === 6 ? 'Last trading day' : "Today's movement" })()}
@@ -648,6 +710,139 @@ export function Overview() {
                   {fmtDate(fxHistory[0].date)} – {fmtDate(fxHistory[fxHistory.length - 1].date)} · Frankfurter.app
                 </p>
               )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {glModalOpen && (() => {
+        const gl = glDetail
+        const glUp = gl.totalGainLoss >= 0
+        const pct = (v: number | null, suffix = '') =>
+          v == null ? '—' : `${formatPercent(v)}${suffix}`
+        const metrics = [
+          {
+            label: 'Simple return',
+            value: pct(gl.simpleReturnPct),
+            note: 'Total gain ÷ cost. Not annualised — ignores how long you’ve held or when you added money.',
+            available: true,
+          },
+          {
+            label: 'XIRR',
+            value: pct(gl.xirrPct, '/yr'),
+            note: gl.xirrPct == null
+              ? `Needs dated transactions${gl.txnCount === 0 ? ' — none imported for this view yet' : ''}.`
+              : 'Money-weighted annual return from your buys, sells & dividends. Best single figure when you contribute over time.',
+            available: gl.xirrPct != null,
+          },
+          {
+            label: 'CAGR',
+            value: pct(gl.cagrPct, '/yr'),
+            note: gl.cagrPct == null
+              ? 'Needs ~3+ months of snapshot history.'
+              : `Compound annual growth of the whole portfolio (GBP) since ${new Date(gl.cagrSince! + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}.`,
+            available: gl.cagrPct != null,
+          },
+        ]
+
+        const glRow = (r: typeof gl.winners[number]) => (
+          <div key={r.id} className={`flex items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 ${is3d ? 'hover:bg-indigo-900/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>
+            <div className="min-w-0">
+              <div className={`truncate text-sm font-medium ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>{r.ticker}</div>
+              <div className="truncate text-[11px] text-slate-500">{r.name}</div>
+            </div>
+            <div className="shrink-0 text-right tabular-nums">
+              <div className={`text-sm font-semibold ${r.gainLoss >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                {r.gainLoss >= 0 ? '+' : ''}{money(r.gainLoss)}
+              </div>
+              <div className={`text-[11px] ${r.gainLoss >= 0 ? 'text-emerald-500/80' : 'text-rose-500/80'}`}>{formatPercent(r.gainLossPct)}</div>
+            </div>
+          </div>
+        )
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
+            onClick={() => setGlModalOpen(false)}
+          >
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <div
+              className={[
+                'relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl p-5 shadow-2xl sm:max-w-lg sm:rounded-2xl',
+                is3d ? 'bg-indigo-950/95 border border-indigo-400/30 text-cyan-100' : 'bg-white dark:bg-slate-900',
+              ].join(' ')}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="mb-4 flex items-start justify-between">
+                <div>
+                  <h2 className={`text-base font-semibold ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>
+                    Total gain / loss
+                  </h2>
+                  <p className={`mt-0.5 text-2xl font-bold tabular-nums ${glUp ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {glUp ? '+' : ''}{money(gl.totalGainLoss)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {money(gl.totalValueBase)} value · {money(gl.totalCostBase)} invested
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGlModalOpen(false)}
+                  className={`rounded-lg p-1.5 transition ${is3d ? 'hover:bg-indigo-800/60 text-cyan-300' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'}`}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                {/* Return metrics */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  {metrics.map((m) => (
+                    <div key={m.label} className={`rounded-xl px-2 py-2.5 ${is3d ? 'bg-indigo-900/50' : 'bg-slate-50 dark:bg-slate-800/60'}`}>
+                      <div className={`text-[11px] ${is3d ? 'text-cyan-300/70' : 'text-slate-500'}`}>{m.label}</div>
+                      <div className={`mt-0.5 text-base font-semibold tabular-nums ${m.available ? (is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100') : 'text-slate-400'}`}>
+                        {m.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <ul className="mt-3 space-y-1.5">
+                  {metrics.map((m) => (
+                    <li key={m.label} className="flex gap-2 text-[11px] leading-snug text-slate-500">
+                      <span className={`font-semibold ${is3d ? 'text-cyan-200' : 'text-slate-600 dark:text-slate-300'}`}>{m.label}:</span>
+                      <span>{m.note}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Winners */}
+                {gl.winners.length > 0 && (
+                  <div className="mt-4">
+                    <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-emerald-500">
+                      <TrendingUp className="h-3.5 w-3.5" /> Gainers ({gl.winners.length})
+                    </div>
+                    <div className="max-h-44 overflow-y-auto">{gl.winners.map(glRow)}</div>
+                  </div>
+                )}
+
+                {/* Losers */}
+                {gl.losers.length > 0 && (
+                  <div className="mt-4">
+                    <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-rose-500">
+                      <TrendingDown className="h-3.5 w-3.5" /> Losers ({gl.losers.length})
+                    </div>
+                    <div className="max-h-44 overflow-y-auto">{gl.losers.map(glRow)}</div>
+                  </div>
+                )}
+
+                {/* Footnote */}
+                <p className={`mt-4 text-[11px] leading-snug ${is3d ? 'text-indigo-300/60' : 'text-slate-400'}`}>
+                  Gainers/losers are unrealised, at live prices.
+                  {gl.dividendsBase > 0 && ` Dividends received (${money(gl.dividendsBase)}) are included in XIRR.`}
+                  {' '}XIRR converts each transaction at current FX (historical FX isn’t stored), so cross-currency figures are approximate.
+                </p>
+              </div>
             </div>
           </div>
         )
