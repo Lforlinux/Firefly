@@ -39,6 +39,8 @@ export function Overview() {
 
   // ── Total G/L detail modal ─────────────────────────────────────────────────
   const [glModalOpen, setGlModalOpen] = useState(false)
+  // ── Portfolio breakdown modal ──────────────────────────────────────────────
+  const [pvModalOpen, setPvModalOpen] = useState(false)
 
   const openFxModal = useCallback(async () => {
     setFxModalOpen(true)
@@ -215,6 +217,24 @@ export function Overview() {
       txnCount: glTxns.length,
     }
 
+    // ── Portfolio value detail (for the Portfolio modal) ───────────────────────
+    const byTypeMap = new Map<string, number>()
+    for (const r of built.rows) byTypeMap.set(r.type, (byTypeMap.get(r.type) ?? 0) + r.valueBase)
+    const pvTypes = [...byTypeMap.entries()]
+      .map(([type, value]) => ({ type, value, weight: built.totalValueBase > 0 ? value / built.totalValueBase : 0 }))
+      .sort((a, b) => b.value - a.value)
+    const pvDetail = {
+      value: built.totalValueBase,
+      cost: built.totalCostBase,
+      gain: built.totalGainLoss,
+      gainPct: built.totalGainLossPct,
+      cashValue: built.cashValueBase,
+      investedValue: built.totalValueBase - built.cashValueBase,
+      positions: built.investedRows.length,
+      types: pvTypes,
+      holdings: [...built.rows].sort((a, b) => b.valueBase - a.valueBase),
+    }
+
     let essentialsScore = 0
     let fireProgress = 0
     let fireYears = 0
@@ -269,6 +289,7 @@ export function Overview() {
       dailyMovement,
       prevCloseAsOf,
       glDetail,
+      pvDetail,
     }
   }, [data, selectedOwner, selectedCountry])
 
@@ -324,6 +345,7 @@ export function Overview() {
     dailyMovement,
     prevCloseAsOf,
     glDetail,
+    pvDetail,
   } = view
   const is3d = visualStyle === 'premium3d'
   const hidden = '•••••'
@@ -383,11 +405,13 @@ export function Overview() {
         )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <KpiCard
-            label="Portfolio"
-            value={money(totalValueBase)}
-            sub={privacyMode ? hidden : `Invested: ${formatMoney(totalCostBase, base)}`}
-          />
+          <button type="button" onClick={() => setPvModalOpen(true)} className="block w-full text-left transition hover:opacity-90 active:scale-[0.98]">
+            <KpiCard
+              label="Portfolio"
+              value={money(totalValueBase)}
+              sub={privacyMode ? hidden : `Invested: ${formatMoney(totalCostBase, base)}`}
+            />
+          </button>
           <Link to="/networth-progress" className="block transition hover:opacity-95">
             <KpiCard
               label="Net worth"
@@ -841,6 +865,126 @@ export function Overview() {
                   Gainers/losers are unrealised, at live prices.
                   {gl.dividendsBase > 0 && ` Dividends received (${money(gl.dividendsBase)}) are included in XIRR.`}
                   {' '}XIRR converts each transaction at current FX (historical FX isn’t stored), so cross-currency figures are approximate.
+                </p>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {pvModalOpen && (() => {
+        const pv = pvDetail
+        const gainUp = pv.gain >= 0
+        const typeColor = (t: string) => (is3d ? TYPE_COLORS_3D : TYPE_COLORS)[t] ?? '#94a3b8'
+        const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+        const tiles = [
+          { label: 'Securities', value: money(pv.investedValue) },
+          { label: 'Cash', value: money(pv.cashValue) },
+          { label: 'Positions', value: String(pv.positions) },
+        ]
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
+            onClick={() => setPvModalOpen(false)}
+          >
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <div
+              className={[
+                'relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl p-5 shadow-2xl sm:max-w-lg sm:rounded-2xl',
+                is3d ? 'bg-indigo-950/95 border border-indigo-400/30 text-cyan-100' : 'bg-white dark:bg-slate-900',
+              ].join(' ')}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="mb-4 flex items-start justify-between">
+                <div>
+                  <h2 className={`text-base font-semibold ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>
+                    Portfolio value
+                  </h2>
+                  <p className={`mt-0.5 text-2xl font-bold tabular-nums ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>
+                    {money(pv.value)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {money(pv.cost)} invested ·{' '}
+                    <span className={gainUp ? 'text-emerald-500' : 'text-rose-500'}>
+                      {gainUp ? '+' : ''}{money(pv.gain)} ({formatPercent(pv.gainPct)})
+                    </span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPvModalOpen(false)}
+                  className={`rounded-lg p-1.5 transition ${is3d ? 'hover:bg-indigo-800/60 text-cyan-300' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'}`}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                {/* Tiles */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  {tiles.map((t) => (
+                    <div key={t.label} className={`rounded-xl px-2 py-2.5 ${is3d ? 'bg-indigo-900/50' : 'bg-slate-50 dark:bg-slate-800/60'}`}>
+                      <div className={`text-[11px] ${is3d ? 'text-cyan-300/70' : 'text-slate-500'}`}>{t.label}</div>
+                      <div className={`mt-0.5 text-base font-semibold tabular-nums ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>{t.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* By asset type */}
+                {pv.types.length > 0 && (
+                  <div className="mt-4">
+                    <div className="mb-2 text-xs font-semibold text-slate-500">By asset type</div>
+                    {/* stacked weight bar */}
+                    <div className="mb-3 flex h-2 overflow-hidden rounded-full">
+                      {pv.types.map((t) => (
+                        <div key={t.type} style={{ width: `${t.weight * 100}%`, background: typeColor(t.type) }} title={`${cap(t.type)} ${(t.weight * 100).toFixed(1)}%`} />
+                      ))}
+                    </div>
+                    <div className="space-y-1.5">
+                      {pv.types.map((t) => (
+                        <div key={t.type} className="flex items-center justify-between gap-3 text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: typeColor(t.type) }} />
+                            <span className={`truncate ${is3d ? 'text-cyan-100' : 'text-slate-700 dark:text-slate-200'}`}>{cap(t.type)}</span>
+                          </div>
+                          <div className="shrink-0 text-right tabular-nums">
+                            <span className={`font-medium ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>{money(t.value)}</span>
+                            <span className="ml-2 text-[11px] text-slate-500">{(t.weight * 100).toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Holdings by value */}
+                {pv.holdings.length > 0 && (
+                  <div className="mt-4">
+                    <div className="mb-1 text-xs font-semibold text-slate-500">Holdings by value ({pv.holdings.length})</div>
+                    <div className="max-h-72 overflow-y-auto">
+                      {pv.holdings.map((h) => (
+                        <div key={h.id} className={`flex items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 ${is3d ? 'hover:bg-indigo-900/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: typeColor(h.type) }} />
+                            <div className="min-w-0">
+                              <div className={`truncate text-sm font-medium ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>{h.ticker}</div>
+                              <div className="truncate text-[11px] text-slate-500">{h.name}</div>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right tabular-nums">
+                            <div className={`text-sm font-semibold ${is3d ? 'text-cyan-100' : 'text-slate-900 dark:text-slate-100'}`}>{money(h.valueBase)}</div>
+                            <div className="text-[11px] text-slate-500">{pv.value > 0 ? ((h.valueBase / pv.value) * 100).toFixed(1) : '0.0'}%</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <p className={`mt-4 text-[11px] leading-snug ${is3d ? 'text-indigo-300/60' : 'text-slate-400'}`}>
+                  Values at live prices where available, otherwise cost basis.
+                  {livePriceCount === 0 && ' No live prices yet — figures shown at cost.'}
                 </p>
               </div>
             </div>
