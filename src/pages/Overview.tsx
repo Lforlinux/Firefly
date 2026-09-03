@@ -235,6 +235,20 @@ export function Overview() {
       holdings: [...built.rows].sort((a, b) => b.valueBase - a.valueBase),
     }
 
+    // ── Market "income" (£) — price gains with deposits excluded, from daily
+    // movements. Same source as Analytics' Monthly market growth. Always GBP.
+    const ymNow = today.slice(0, 7)
+    const yNow = today.slice(0, 4)
+    let monthlyIncomeGBP = 0
+    let yearlyIncomeGBP = 0
+    let hasIncomeData = false
+    for (const m of data.dailyMovements || []) {
+      if (m.owner !== selectedOwner) continue
+      const val = Number(m.movementGBP) || 0
+      if (m.date.slice(0, 4) === yNow) { yearlyIncomeGBP += val; hasIncomeData = true }
+      if (m.date.slice(0, 7) === ymNow) monthlyIncomeGBP += val
+    }
+
     let essentialsScore = 0
     let fireProgress = 0
     let fireYears = 0
@@ -290,6 +304,10 @@ export function Overview() {
       prevCloseAsOf,
       glDetail,
       pvDetail,
+      monthlyIncomeGBP,
+      yearlyIncomeGBP,
+      hasIncomeData,
+      incomeYear: yNow,
     }
   }, [data, selectedOwner, selectedCountry])
 
@@ -346,6 +364,10 @@ export function Overview() {
     prevCloseAsOf,
     glDetail,
     pvDetail,
+    monthlyIncomeGBP,
+    yearlyIncomeGBP,
+    hasIncomeData,
+    incomeYear,
   } = view
   const is3d = visualStyle === 'premium3d'
   const hidden = '•••••'
@@ -404,7 +426,7 @@ export function Overview() {
           </Card>
         )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <button type="button" onClick={() => setPvModalOpen(true)} className="block w-full text-left transition hover:opacity-90 active:scale-[0.98]">
             <KpiCard
               label="Portfolio"
@@ -433,6 +455,17 @@ export function Overview() {
               value={dailyMovement == null ? '—' : money(dailyMovement)}
               tone={dailyMovement == null ? 'neutral' : dailyMovement >= 0 ? 'gain' : 'loss'}
               sub={prevCloseAsOf ? `vs close ${new Date(prevCloseAsOf + (prevCloseAsOf.includes('T') ? '' : 'T12:00:00Z')).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Refresh again tomorrow to see'}
+              icon={<TrendingUp className="h-4 w-4 text-slate-400" />}
+            />
+          </Link>
+          <Link to="/analytics" className="block transition hover:opacity-95">
+            <KpiCard
+              label="Market income"
+              value={hasIncomeData ? (privacyMode ? hidden : formatMoney(monthlyIncomeGBP, 'GBP')) : '—'}
+              tone={!hasIncomeData ? 'neutral' : monthlyIncomeGBP >= 0 ? 'gain' : 'loss'}
+              sub={hasIncomeData
+                ? (privacyMode ? hidden : `${incomeYear}: ${formatMoney(yearlyIncomeGBP, 'GBP')}`)
+                : 'Builds as prices are tracked'}
               icon={<TrendingUp className="h-4 w-4 text-slate-400" />}
             />
           </Link>
