@@ -18,10 +18,14 @@ interface Contributor {
   pct: number  // (price − prevClose) / prevClose
 }
 
+type DateRange = '1W' | '1M' | 'Max'
+
 export function DailyMovement() {
   const { data, isLoading, error } = usePortfolio()
   const { selectedOwner, selectedCountry, visualStyle } = useUi()
   const is3d = visualStyle === 'premium3d'
+
+  const [dateRange, setDateRange] = useState<DateRange>('1M')
 
   // Dip-buy plan: % of each holding's drop to buy. Persisted per-browser.
   const [dipPct, setDipPct] = useState<number>(() => {
@@ -30,20 +34,13 @@ export function DailyMovement() {
   })
   useEffect(() => { localStorage.setItem('firefly.dipBuyPct', String(dipPct)) }, [dipPct])
 
-  const { base, movements, bestDay, worstDay, totalCaptured, today } = useMemo(() => {
-    if (!data) return { base: 'GBP', movements: [], bestDay: null, worstDay: null, totalCaptured: 0, today: null }
+  const { base, allMovements, today } = useMemo(() => {
+    if (!data) return { base: 'GBP', allMovements: [], today: null }
     const base = data.settings.baseCurrency || 'GBP'
 
-    const movements = [...(data.dailyMovements || [])]
+    const allMovements = [...(data.dailyMovements || [])]
       .filter((m) => m.owner === selectedOwner)
       .sort((a, b) => a.date.localeCompare(b.date))
-      // keep last 60 trading days
-      .slice(-60)
-
-    const vals = movements.map((m) => m.movementGBP)
-    const bestDay = vals.length ? movements[vals.indexOf(Math.max(...vals))] : null
-    const worstDay = vals.length ? movements[vals.indexOf(Math.min(...vals))] : null
-    const totalCaptured = vals.reduce((s, v) => s + v, 0)
 
     // Latest-day per-holding breakdown, computed live from price vs prev close.
     // Mirrors the dashboard "Today's movement" card: same owner + country filter
@@ -81,8 +78,26 @@ export function DailyMovement() {
       ? { total, asOf, gainers, losers, base: todayBase }
       : null
 
-    return { base, movements, bestDay, worstDay, totalCaptured, today }
+    return { base, allMovements, today }
   }, [data, selectedOwner, selectedCountry])
+
+  const movements = useMemo(() => {
+    if (dateRange === 'Max') return allMovements
+    const cutoff = new Date()
+    if (dateRange === '1W') cutoff.setDate(cutoff.getDate() - 7)
+    else cutoff.setDate(cutoff.getDate() - 30)
+    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    return allMovements.filter((m) => m.date >= cutoffStr)
+  }, [allMovements, dateRange])
+
+  const { bestDay, worstDay, totalCaptured } = useMemo(() => {
+    const vals = movements.map((m) => m.movementGBP)
+    return {
+      bestDay: vals.length ? movements[vals.indexOf(Math.max(...vals))] : null,
+      worstDay: vals.length ? movements[vals.indexOf(Math.min(...vals))] : null,
+      totalCaptured: vals.reduce((s, v) => s + v, 0),
+    }
+  }, [movements])
 
   if (isLoading) return <Loading />
   if (error) return <PageBody><EmptyState title="Couldn't load movements" body={(error as Error).message} /></PageBody>
@@ -106,7 +121,7 @@ export function DailyMovement() {
         }
       />
       <PageBody>
-        {movements.length === 0 ? (
+        {allMovements.length === 0 ? (
           <EmptyState
             title="No movement data yet"
             body="Prices are captured automatically at 21:30 UTC on trading days. You can also trigger a manual refresh from the dashboard."
@@ -234,7 +249,7 @@ export function DailyMovement() {
                 <div className={`mt-2 text-2xl font-semibold tabular-nums ${totalCaptured >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                   {formatMoney(totalCaptured, base)}
                 </div>
-                <div className="mt-1 text-xs text-slate-500">{movements.length} days recorded</div>
+                <div className="mt-1 text-xs text-slate-500">{movements.length} days · {dateRange === 'Max' ? 'all time' : dateRange === '1W' ? 'last 7 days' : 'last 30 days'}</div>
               </Card>
               <Card tone="elevated">
                 <div className="text-xs uppercase tracking-wider text-slate-500">Best day</div>
@@ -253,10 +268,31 @@ export function DailyMovement() {
             </div>
 
             <Card tone="elevated">
-              <h3 className="text-sm font-semibold">Daily P&amp;L — last {movements.length} days</h3>
-              <p className="mt-1 text-xs text-slate-500">
-                Each bar is (close − prev close) × shares × FX. Gaps are days with no price capture.
-              </p>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Daily P&amp;L</h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Each bar is (close − prev close) × shares × FX. Gaps are days with no price capture.
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  {(['1W', '1M', 'Max'] as DateRange[]).map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setDateRange(r)}
+                      className={[
+                        'rounded-lg px-2.5 py-1 text-xs font-semibold tabular-nums transition',
+                        dateRange === r
+                          ? (is3d ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900')
+                          : (is3d ? 'bg-indigo-900/50 text-cyan-200 hover:bg-indigo-800/60' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'),
+                      ].join(' ')}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="mt-4 h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={movements} barCategoryGap="30%">
