@@ -87,7 +87,7 @@ export function DailyMovement() {
     if (dateRange === '1W') cutoff.setDate(cutoff.getDate() - 7)
     else cutoff.setDate(cutoff.getDate() - 30)
     const cutoffStr = cutoff.toISOString().slice(0, 10)
-    return allMovements.filter((m) => m.date >= cutoffStr)
+    return allMovements.filter((m) => m.date.slice(0, 10) >= cutoffStr)
   }, [allMovements, dateRange])
 
   const { bestDay, worstDay, totalCaptured } = useMemo(() => {
