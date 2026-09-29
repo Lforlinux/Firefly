@@ -80,7 +80,7 @@ async function getPortfolio(req: VercelRequest, res: VercelResponse) {
          FROM daily_movements
          WHERE user_id = $1
          ORDER BY movement_date DESC
-         LIMIT 90`,
+         LIMIT 1500`,
         [auth.userId]
       ).catch(() => ({ rows: [] })),
       db.query(
