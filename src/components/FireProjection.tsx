@@ -18,7 +18,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Flame } from 'lucide-react'
-import { Card } from '@/components/ui'
+import { Card, Collapsible } from '@/components/ui'
 import { formatMoney, formatMoneyCompact } from '@/utils/format'
 import type { FirePlannerData } from '@/services/api'
 
@@ -314,7 +314,13 @@ export function FireProjection({
       )}
 
       {/* Year-by-year table */}
-      <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+      <div className="mt-4">
+      <Collapsible
+        storageKey="ff.fire.collapse.yearByYear"
+        title="Year-by-year projection"
+        subtitle={`${model.rows.length} years · savings, growth, milestones`}
+      >
+      <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
         <table className="w-full min-w-[760px] text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60">
@@ -366,6 +372,8 @@ export function FireProjection({
             })}
           </tbody>
         </table>
+      </div>
+      </Collapsible>
       </div>
 
       <div className={`mt-2 text-[11px] ${is3d ? 'text-indigo-200/50' : 'text-slate-400'}`}>

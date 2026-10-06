@@ -6,7 +6,7 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 import { usePortfolio, useUi } from '@/context/AppContext'
 import { buildPortfolio } from '@/utils/calculations'
 import { totalLiabilitiesBase } from '@/utils/liabilities'
-import { Card, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
+import { Card, Collapsible, EmptyState, Loading, PageBody, PageHeader } from '@/components/ui'
 import { FireProjection } from '@/components/FireProjection'
 import { formatMoney, formatMoneyCompact } from '@/utils/format'
 import { fetchGoals } from '@/services/api'
@@ -560,11 +560,12 @@ export function Analytics() {
         {/* Provider breakdown table */}
         {view.providerBreakdown.length > 0 && (
           <Card tone="elevated">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Where your money is held</h3>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {selectedCountry === 'India' ? '🇮🇳 India holdings · values in INR' : '🇬🇧 UK holdings · values in GBP'} · live prices
-            </p>
-            <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+            <Collapsible
+              storageKey="ff.analytics.collapse.providers"
+              title="Where your money is held"
+              subtitle={`${selectedCountry === 'India' ? '🇮🇳 India holdings · values in INR' : '🇬🇧 UK holdings · values in GBP'} · live prices`}
+            >
+            <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60">
@@ -600,6 +601,7 @@ export function Analytics() {
                 </tfoot>
               </table>
             </div>
+            </Collapsible>
           </Card>
         )}
 
@@ -658,11 +660,12 @@ export function Analytics() {
         {/* Monthly market growth (£) — real gains with deposits excluded, live from daily tracking */}
         {selectedCountry !== 'India' && monthlyMarketGrowth.length > 0 && (
           <Card tone="elevated">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Monthly market growth (£)</h3>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Real price movement per month — your deposits excluded · from daily tracking, updates on every sync
-            </p>
-            <div className="mt-4 overflow-x-auto">
+            <Collapsible
+              storageKey="ff.analytics.collapse.monthlyMarket"
+              title="Monthly market growth (£)"
+              subtitle="Real price movement per month — your deposits excluded · from daily tracking, updates on every sync"
+            >
+            <div className="overflow-x-auto">
               <table className="w-full text-sm tabular-nums">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wider text-slate-500">
@@ -714,6 +717,7 @@ export function Analytics() {
             <p className="mt-3 text-xs text-slate-400">
               Deposits and share edits move your value but never appear here — this is market movement only. Series begins where daily tracking started.
             </p>
+            </Collapsible>
           </Card>
         )}
 

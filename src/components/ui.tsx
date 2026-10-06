@@ -3,7 +3,8 @@
  */
 import type { ReactNode } from 'react'
 import type { HTMLAttributes } from 'react'
-import { TrendingDown, TrendingUp, Loader2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ChevronRight, TrendingDown, TrendingUp, Loader2 } from 'lucide-react'
 import { formatMoney, formatPercent } from '@/utils/format'
 import type { CurrencyCode } from '@/types'
 
@@ -151,4 +152,61 @@ export function Loading({ label = 'Loading…' }: { label?: string }) {
 
 export function PageBody({ children }: { children: ReactNode }) {
   return <div className="ff-page-body space-y-4 px-4 py-4 sm:space-y-6 sm:px-6 sm:py-6 lg:space-y-7">{children}</div>
+}
+
+/**
+ * Collapsible section header with a chevron. Collapsed by default; remembers the
+ * open/closed choice per `storageKey` in localStorage. Use to hide large tables
+ * until needed.
+ */
+export function Collapsible({
+  title,
+  subtitle,
+  children,
+  storageKey,
+  defaultOpen = false,
+  right,
+}: {
+  title: ReactNode
+  subtitle?: ReactNode
+  children: ReactNode
+  storageKey?: string
+  defaultOpen?: boolean
+  right?: ReactNode
+}) {
+  const [open, setOpen] = useState<boolean>(() => {
+    if (storageKey) {
+      try {
+        const v = localStorage.getItem(storageKey)
+        if (v === '1') return true
+        if (v === '0') return false
+      } catch { /* ignore */ }
+    }
+    return defaultOpen
+  })
+  useEffect(() => {
+    if (!storageKey) return
+    try { localStorage.setItem(storageKey, open ? '1' : '0') } catch { /* ignore */ }
+  }, [open, storageKey])
+
+  return (
+    <div>
+      <div className="flex items-start justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-start gap-2 text-left"
+        >
+          <ChevronRight className={cx('mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform', open && 'rotate-90')} />
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</span>
+            {subtitle && <span className="mt-1 block text-xs text-slate-500">{subtitle}</span>}
+          </span>
+        </button>
+        {right}
+      </div>
+      {open && <div className="mt-4">{children}</div>}
+    </div>
+  )
 }
